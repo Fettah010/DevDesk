@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DevDesk.Pages.ProjectsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:DevDesk.Models"
+    xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d">
+
+    <Grid Padding="28,20,28,24">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300"/>
+            <ColumnDefinition Width="1"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left: project list. -->
+        <StackPanel Grid.Column="0" Spacing="12" Margin="0,0,16,0">
+            <TextBlock Text="Projects" Style="{ThemeResource TitleTextBlockStyle}" FontWeight="SemiBold"/>
+            <TextBox x:Name="FilterBox" PlaceholderText="Filter projects… (Phase 1)" FontSize="13"/>
+            <ListView
+                x:Name="ProjectsList"
+                SelectionMode="Single"
+                SelectionChanged="ProjectsList_SelectionChanged">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="models:ProjectModel">
+                        <StackPanel Spacing="2" Padding="0,4">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{x:Bind Name}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis"/>
+                                <Border
+                                    Visibility="{x:Bind IsWorkspace}"
+                                    CornerRadius="4"
+                                    Padding="5,1"
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    VerticalAlignment="Center">
+                                    <TextBlock Text="WS" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock
+                                Text="{x:Bind ListSubtitle}"
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </StackPanel>
+
+        <Border Grid.Column="1" Width="1" Background="{ThemeResource ControlStrokeColorDefaultBrush}"/>
+
+        <!-- Right: detail (placeholders until Git/GitHub services land). -->
+        <Grid Grid.Column="2" Margin="18,0,0,0" RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Detail header + quick actions. -->
+            <Grid Grid.Row="0" ColumnSpacing="14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border
+                    Grid.Column="0"
+                    Width="44" Height="44"
+                    CornerRadius="10"
+                    Background="{ThemeResource SeaBlueSoftBrush}"
+                    VerticalAlignment="Center">
+                    <FontIcon x:Name="DetailIcon" Glyph="&#xE8B7;" FontSize="18"
+                              Foreground="{ThemeResource SeaBlueBrush}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock x:Name="DetailTitle" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <Border
+                            x:Name="DetailWorkspaceBadge"
+                            Visibility="Collapsed"
+                            CornerRadius="4"
+                            Padding="6,1"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            VerticalAlignment="Center">
+                            <TextBlock Text="Workspace" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock
+                        x:Name="DetailPath"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
+                <!-- Quick actions: wired up in Phase 1. -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Style="{ThemeResource AccentButtonStyle}" CornerRadius="8" Tag="build" Click="ProjectAction_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE756;" FontSize="14"/>
+                            <TextBlock Text="Build"/>
+                        </StackPanel>
+                    </Button>
+                    <Button CornerRadius="8" Tag="run" Click="ProjectAction_Click" ToolTipService.ToolTip="Run">
+                        <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                    </Button>
+                    <Button CornerRadius="8" Tag="publish" Click="ProjectAction_Click" ToolTipService.ToolTip="Publish">
+                        <FontIcon Glyph="&#xE7B8;" FontSize="14"/>
+                    </Button>
+                    <Button CornerRadius="8" Tag="vstudio" Click="ProjectAction_Click" ToolTipService.ToolTip="Open in Visual Studio">
+                        <FontIcon Glyph="&#xE8A5;" FontSize="14"/>
+                    </Button>
+                    <Button CornerRadius="8" Tag="folder" Click="ProjectAction_Click" ToolTipService.ToolTip="Open in Explorer">
+                        <FontIcon Glyph="&#xE838;" FontSize="14"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <InfoBar x:Name="NotWiredInfoBar" Grid.Row="1" Severity="Informational" IsOpen="False" IsClosable="True"/>
+
+            <ctk:Segmented x:Name="DetailTabs" Grid.Row="2" SelectionChanged="DetailTabs_SelectionChanged" HorizontalAlignment="Left">
+                <ctk:SegmentedItem Content="Overview"/>
+                <ctk:SegmentedItem Content="Commits"/>
+                <ctk:SegmentedItem Content="Releases"/>
+                <ctk:SegmentedItem Content="Actions"/>
+            </ctk:Segmented>
+
+            <!-- Tab content (placeholders). -->
+            <Grid Grid.Row="3" Margin="0,4,0,0">
+                <StackPanel x:Name="OverviewPanel" Spacing="10">
+                    <Border Style="{StaticResource DevCardStyle}" Padding="18">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Branch" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock x:Name="OverviewBranch" Grid.Column="1" FontWeight="SemiBold"/>
+                            </Grid>
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Version" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock x:Name="OverviewVersion" Grid.Column="1" FontWeight="SemiBold"/>
+                            </Grid>
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Repository" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock x:Name="OverviewRepo" Grid.Column="1"/>
+                            </Grid>
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Working tree" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock x:Name="OverviewTree" Grid.Column="1"/>
+                            </Grid>
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Last commit" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock x:Name="OverviewCommit" Grid.Column="1" TextWrapping="Wrap"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock
+                        Text="Git status, branches, tags and fetch data land in Phase 1."
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                </StackPanel>
+
+                <StackPanel x:Name="CommitsPanel" Visibility="Collapsed" Spacing="10">
+                    <Border Style="{StaticResource DevCardStyle}" Padding="18">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="120"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="a1b2c3d" FontFamily="Consolas" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="Feat: add release wizard to the templates page" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="2" Text="fettah · 2 h ago" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="120"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="e5f6a7b" FontFamily="Consolas" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="Fix: channel selector persistence on the Updates page" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="2" Text="fettah · yesterday" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="120"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="c8d9e0f" FontFamily="Consolas" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="Docs: add AGENTS.md and NEXT-DEV.md roadmap" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="2" Text="fettah · 3 d ago" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Load full log" IsEnabled="False" ToolTipService.ToolTip="Wires up in Phase 1"/>
+                        <TextBlock
+                            Text="Full history is not stored in this build yet."
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel x:Name="ReleasesPanel" Visibility="Collapsed" Spacing="10">
+                    <Border Style="{StaticResource DevCardStyle}" Padding="18">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="6" Padding="8,2" Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                    <TextBlock Text="stable · v0.0.2" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                </Border>
+                                <TextBlock Grid.Column="1" Text="Live on the stable feed — delta 2.1 MB applied by Velopack." Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="3 d ago" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="6" Padding="8,2" Background="{ThemeResource SeaBlueSoftBrush}">
+                                    <TextBlock Text="beta · v0.3.0" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource SeaBlueBrush}"/>
+                                </Border>
+                                <TextBlock Grid.Column="1" Text="Draft on the beta feed — waiting for the CI run to finish." Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="2 h ago" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="New release" IsEnabled="False" ToolTipService.ToolTip="Wizard lands in Phase 2"/>
+                        <TextBlock
+                            Text="Channels per branch: main → stable, develop → beta."
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel x:Name="ActionsPanel" Visibility="Collapsed" Spacing="10">
+                    <Border Style="{StaticResource DevCardStyle}" Padding="18">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0" Glyph="&#xE774;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="Build &amp; publish" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="run #47 · 2m 10s" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                                <Border Grid.Column="3" CornerRadius="6" Padding="7,2" Background="{ThemeResource SystemFillColorCriticalBrush}">
+                                    <TextBlock Text="FAILED" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                </Border>
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0" Glyph="&#xE774;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="Build &amp; publish" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="run #46 · 1m 58s" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                                <Border Grid.Column="3" CornerRadius="6" Padding="7,2" Background="{ThemeResource SystemFillColorSuccessBrush}">
+                                    <TextBlock Text="SUCCESS" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                </Border>
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0" Glyph="&#xE774;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="Build &amp; publish" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="run #45 · running" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
+                                <Border Grid.Column="3" CornerRadius="6" Padding="7,2" Background="{ThemeResource SeaBlueBrush}">
+                                    <TextBlock Text="RUNNING" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock
+                        Text="Actions runs stream in from the GitHub API in Phase 2."
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

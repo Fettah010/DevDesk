@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DevDesk.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
+    mc:Ignorable="d">
+
+    <Grid Padding="28,20,28,24" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Spacing="2">
+            <TextBlock Text="Settings" Style="{ThemeResource TitleTextBlockStyle}" FontWeight="SemiBold"/>
+            <TextBlock
+                Text="Appearance, scan roots and GitHub credentials."
+                Style="{ThemeResource BodyTextBlockStyle}"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="8" MaxWidth="760" HorizontalAlignment="Left">
+
+                <TextBlock
+                    Text="APPEARANCE"
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Margin="0,12,0,0"/>
+
+                <ctk:SettingsCard
+                    Header="Theme"
+                    Description="Sea-blue accent, Mica backdrop, white or navy-black surfaces. Persisted across launches.">
+                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <ctk:Segmented x:Name="ThemeSegment" SelectionChanged="ThemeSegment_SelectionChanged" SelectedIndex="0">
+                            <ctk:SegmentedItem Content="System"/>
+                            <ctk:SegmentedItem Content="Light"/>
+                            <ctk:SegmentedItem Content="Dark"/>
+                        </ctk:Segmented>
+                        <TextBlock
+                            Text="Accent: Sea Blue #2D7FF9"
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            VerticalAlignment="Center"/>
+                    </StackPanel>
+                </ctk:SettingsCard>
+
+                <TextBlock
+                    Text="PROJECTS"
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Margin="0,12,0,0"/>
+
+                <ctk:SettingsCard
+                    Header="Scan roots"
+                    Description="Nested git repos and solutions are detected automatically (max depth 3). Hidden and build folders are ignored.">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock x:Name="ScanRootsText" Text="C:\Code\projects" FontSize="12" VerticalAlignment="Center"/>
+                        <Button x:Name="AddRootButton" CornerRadius="8" Click="AddRootButton_Click" ToolTipService.ToolTip="Add path (Phase 1)">
+                            <FontIcon Glyph="&#xE710;" FontSize="14"/>
+                        </Button>
+                    </StackPanel>
+                </ctk:SettingsCard>
+
+                <ctk:SettingsCard
+                    Header="Ignore patterns"
+                    Description="Default ignore list skips build output and tool folders.">
+                    <TextBlock
+                        Text="bin · obj · node_modules · .vs · Releases · Logs"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        VerticalAlignment="Center"/>
+                </ctk:SettingsCard>
+
+                <TextBlock
+                    Text="GITHUB"
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Margin="0,12,0,0"/>
+
+                <ctk:SettingsCard
+                    Header="Personal access token"
+                    Description="Stored via Windows Credential Manager — never written to disk or logs.">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <PasswordBox x:Name="TokenBox" Width="220" PlaceholderText="ghp_…" VerticalAlignment="Center"/>
+                        <Button x:Name="SaveTokenButton" Content="Save" CornerRadius="8" Click="SaveTokenButton_Click"/>
+                    </StackPanel>
+                </ctk:SettingsCard>
+
+                <ctk:SettingsCard
+                    Header="Branch → channel"
+                    Description="Map git branches to Velopack feeds for one-click releases.">
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="main → stable (release branch)" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock Text="develop → beta" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                    </StackPanel>
+                </ctk:SettingsCard>
+
+                <TextBlock
+                    Text="ABOUT"
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Margin="0,12,0,0"/>
+
+                <ctk:SettingsCard
+                    Header="Version"
+                    Description="DevDesk auto-updates via Velopack after it is installed (setup.exe).">
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <TextBlock x:Name="VersionText" Style="{ThemeResource BodyTextBlockStyle}" FontWeight="SemiBold"/>
+                        <Button x:Name="CheckUpdatesButton" Content="Check for updates" CornerRadius="8" Click="CheckUpdatesButton_Click"/>
+                    </StackPanel>
+                </ctk:SettingsCard>
+
+                <InfoBar
+                    x:Name="SettingsInfoBar"
+                    Margin="0,8,0,0"
+                    Severity="Informational"
+                    IsOpen="False"
+                    IsClosable="True"/>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>
