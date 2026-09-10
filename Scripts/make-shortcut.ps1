@@ -5,7 +5,9 @@
 #   powershell -File .\make-shortcut.ps1            # default name "DevDesk"
 #   powershell -File .\make-shortcut.ps1 -Name "DevDesk (Debug)"
 #
-# Re-run any time after the project moves so the paths stay correct.
+# The shortcut is created ONCE (absolute paths) and reused on every launch —
+# it is NOT part of builds or automated flows. Re-run it only when the project
+# moves to a new location or the .lnk is missing/broken.
 # ------------------------------------------------------------------------------
 
 param(

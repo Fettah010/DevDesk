@@ -57,6 +57,20 @@ template inside `DevEcosystem\` (see TemplatesPage default location).
   window** stays visible; it removes itself when the window is up.
 - **`Scripts\make-shortcut.ps1` creates/refreshes that shortcut**
   (default name `DevDesk`). Re-run it if paths change or the link breaks.
+
+### Shortcut lifecycle (important for agents)
+
+- The `.lnk` is created **once** by `make-shortcut.ps1` and stores
+  **absolute** paths (powershell → `launch-dev.ps1`, icon `Assets\app.ico`).
+- It is **NOT (re)created manually or by the build** on every launch — the
+  launcher never touches the shortcut. Do not regenerate the shortcut as part
+  of builds, tests, launches, or any automated flow; the link stays valid for
+  as long as the repo lives at that absolute path.
+- Re-run `make-shortcut.ps1` **only** when the project moves to a new location
+  or the `.lnk` is missing/broken. That is an occasional, manual step — the
+  normal "open the app" flow is just double-clicking the existing shortcut.
+- If a future change ever auto-creates the shortcut (e.g. on first run),
+  keep it a one-time setup action — never per-launch.
 - Guard these scripts when refactoring: if `launch-dev.ps1` or
   `make-shortcut.ps1` stop working, the whole "no terminal" promise breaks.
   Known trap: `Start-Process` does NOT surface the child `ExitCode` in this
