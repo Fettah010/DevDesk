@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using DevDesk.Models;
@@ -12,8 +13,13 @@ public sealed partial class ProjectsPage : Page
     public ProjectsPage()
     {
         this.InitializeComponent();
+        _ = LoadProjectsAsync();
+    }
 
-        ProjectsList.ItemsSource = SampleDataService.GetAll();
+    private async Task LoadProjectsAsync()
+    {
+        var result = await Task.Run(() => new ProjectScanner().ScanAsync());
+        ProjectsList.ItemsSource = result.Projects;
         if (ProjectsList.Items.Count > 0)
             ProjectsList.SelectedIndex = 0;
     }

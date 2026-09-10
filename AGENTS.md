@@ -9,11 +9,11 @@ first before making changes.
 `C:\Code\projects` (branch, version, last commits, releases per channel,
 GitHub Actions, build/run) so the terminal is no longer needed.
 
-**Current status: Phase 0 — UI shell.** The shell, sea-blue theme (light/dark),
-navigation and layout are real and working; project data is placeholder
-(`Services/SampleDataService.cs`). Complex flows (BuildService, GitService,
-GitHubService, ProjectScanner, TemplateService) are NOT wired yet — their
-buttons show an InfoBar instead. Scope lives in
+**Current status: Phase 0 — shell + real scanner.** The shell, sea-blue theme
+(light/dark), navigation and the **ProjectScanner** (git state + versions for
+every repo in the DevEcosystem folder) are real and working. Complex flows
+(BuildService, GitService write ops, GitHubService, TemplateService) are NOT
+wired yet — their buttons show an InfoBar instead. Scope lives in
 `C:\Code\projects\DevEcosystem\DevDesk\docs\DEVDESK-PLAN.md`.
 
 ## Ecosystem layout (this app does not live alone)
@@ -32,13 +32,16 @@ C:\Code\projects\DevEcosystem\
 When scaffolding "new apps from the template", new projects go next to the
 template inside `DevEcosystem\` (see TemplatesPage default location).
 
-### The scan model (Phase 0 data already follows it)
+### The scan model (implemented by `Services/ProjectScanner.cs`)
 
-- Scan root = `DevEcosystem`, depth 2.
-- DevDesk is **never** reported as a scanned project — it has its own
-  dedicated page (`Pages/DevDeskPage`) fed by `SampleDataService.GetSelf()`.
-- Only git repos directly under the scan root count as projects
-  (`SampleDataService.GetAll()`).
+- Scan root = `DevEcosystem`, depth 2 (stop descending once a repo is found).
+- DevDesk is **never** reported as a scanned project — it becomes the self
+  workspace (`ScannerResult.Self`), fed to the dedicated page
+  (`Pages/DevDeskPage`).
+- A folder counts as a project if it is a git repo **or** holds any
+  `*.sln/*.slnx/*.*proj` marker; hygiene folders (bin/obj/.vs/Releases/…) and
+  dot-folders are skipped. Git state is read-only (never fetch/push), so a
+  scan is fast, local, and never fails because of the network.
 
 ## Running DevDesk — NO TERMINAL (the shortcut is the point)
 
@@ -74,7 +77,8 @@ dotnet build -c Debug -p:Platform=x64
   compile from the same repo without being mixed into the app build
   (`<DefaultItemExcludes>` in `DevDesk.csproj`).
 - They cover pure logic: `Models/ProjectModel.cs`,
-  `Services/SampleDataService.cs`, `ThemeService`.
+  `Services/ProjectScanner.cs` (built against temp git repos, requires git),
+  `ThemeService`.
 - Run them (the WinUI/XAML compiler needs a platform):
 
 ```powershell
@@ -95,7 +99,8 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `App.xaml.cs` | UI-thread exception logging + background auto-update check (Velopack, skipped when not installed). |
 | `MainWindow.xaml(.cs)` | Mica backdrop, custom title bar, theme-cycle button (left of the title — must never sit under the OS caption buttons), NavigationView → Dashboard/Projects/Templates/GitHub/DevDesk/Settings/Diagnostics. |
 | `Models/ProjectModel.cs` | Project/Workspace card model + `CommitInfo` + `ComponentInfo`. |
-| `Services/SampleDataService.cs` | **PLACEHOLDER** scan data — `GetAll()` returns only ecosystem projects (never DevDesk), `GetSelf()` feeds the dedicated DevDesk page. Swap for `ProjectScanner` later. |
+| `Services/ProjectScanner.cs` | **Phase 0 scanner** — walks the scan root (depth 2), detects repos by `.git`/project marker, reads branch, dirty/behind, remote host, last 3 commits, and csproj version (with 3-field sync check). Never lists DevDesk; returns it as the self workspace. |
+| `Services/GitRunner.cs` | Safe git process runner — argument lists only, output redirection, 15s timeout; git failure never throws (exit-code path). |
 | `Services/ThemeService.cs` | Applies System/Light/Dark to the window root. |
 | `Services/SettingsService.cs` | JSON settings (`%LocalAppData%\DevDesk\settings.json`), theme persisted. |
 | `Services/LoggingService.cs` | Serilog; `Logs/applog-YYYYMMDD.log` next to the exe. |
@@ -126,8 +131,10 @@ Release infra is copied from the template and unchanged: tag flow
    at the end. Splitting content around a property element breaks the build.
 2. **Platform is mandatory**: `<Platforms>x86;x64;ARM64</Platforms>` + WinUI
    means builds/tests need `-p:Platform=x64`; AnyCPU fails.
-3. **`SampleDataService` is placeholder data** — do not treat its values as
-   real. When ProjectScanner lands, feed the same `ProjectModel` shape.
+3. **`ProjectScanner` reads git/fs read-only** — do not make it write (no
+   fetch/push/commit) or call the network; scans must be instant and safe to
+   re-run. Keep the `GitRunner` argument-list + timeout pattern; preserve the
+   `ScannerResult` shape (projects never contain DevDesk, self is separate).
 4. **Version fields out of sync** (template AGENTS) — surface a badge; release
    wizard must rewrite all three together.
 5. **Channel vocabulary** — template CI uses `stable|beta|alpha`, UI uses

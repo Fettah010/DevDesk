@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -7,35 +8,53 @@ namespace DevDesk.Pages;
 
 public sealed partial class DevDeskPage : Page
 {
+    private readonly ProjectScanner _scanner = new();
+
     public DevDeskPage()
     {
         this.InitializeComponent();
         _ = LoadSelfAsync();
     }
 
-    // Simulates the (future) git/scan read long enough to show the loading
-    // overlay; the real GitService will drive the same BusyOverlay.
     private async Task LoadSelfAsync()
     {
         RefreshSelfButton.IsEnabled = false;
         BusyOverlay.Visibility = Visibility.Visible;
         BusyRing.IsActive = true;
 
-        await Task.Delay(500);
+        try
+        {
+            var result = await Task.Run(() => _scanner.ScanAsync());
+            var self = result.Self;
 
-        var self = SampleDataService.GetSelf();
-        SelfNameText.Text = self.Name;
-        SelfVersionText.Text = self.VersionDisplay;
-        SelfBranchText.Text = self.Branch;
-        SelfStatusText.Text = self.ListSubtitle;
-        SelfPathText.Text = self.Path;
-        SelfCommitsGrid.ItemsSource = self.RecentCommits;
-        SelfComponentsList.ItemsSource = self.Components;
-        ComponentsCard.Visibility = self.Components.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (self is null)
+            {
+                SelfNameText.Text = "DevDesk";
+                SelfStatusText.Text = "Self workspace not found (this repo is not under the scan root).";
+                SelfCommitsGrid.ItemsSource = null;
+                ComponentsCard.Visibility = Visibility.Collapsed;
+                return;
+            }
 
-        BusyRing.IsActive = false;
-        BusyOverlay.Visibility = Visibility.Collapsed;
-        RefreshSelfButton.IsEnabled = true;
+            SelfNameText.Text = self.Name;
+            SelfVersionText.Text = self.VersionDisplay;
+            SelfBranchText.Text = self.Branch;
+            SelfStatusText.Text = self.ListSubtitle;
+            SelfPathText.Text = self.Path;
+            SelfCommitsGrid.ItemsSource = self.RecentCommits;
+            SelfComponentsList.ItemsSource = self.Components;
+            ComponentsCard.Visibility = self.Components.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception)
+        {
+            SelfStatusText.Text = "Could not read the repo state.";
+        }
+        finally
+        {
+            BusyRing.IsActive = false;
+            BusyOverlay.Visibility = Visibility.Collapsed;
+            RefreshSelfButton.IsEnabled = true;
+        }
     }
 
     private async void RefreshSelfButton_Click(object sender, RoutedEventArgs e)
