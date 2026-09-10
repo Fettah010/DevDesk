@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -62,9 +63,39 @@ public sealed partial class DevDeskPage : Page
         await LoadSelfAsync();
     }
 
+    private void OpenExplorerButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProjectOpenActions.OpenInExplorer(_scanner.SelfPath))
+        {
+            return;
+        }
+
+        ActionBar.Severity = InfoBarSeverity.Warning;
+        ActionBar.Title = "Nothing to open";
+        ActionBar.Message = "The DevDesk repo folder was not found.";
+        ActionBar.IsOpen = true;
+    }
+
+    private void OpenPlanButton_Click(object sender, RoutedEventArgs e)
+    {
+        var planPath = Path.Combine(_scanner.SelfPath, "docs", "DEVDESK-PLAN.md");
+        if (ProjectOpenActions.OpenWithDefaultApp(planPath))
+        {
+            return;
+        }
+
+        ActionBar.Severity = InfoBarSeverity.Warning;
+        ActionBar.Title = "Plan doc not found";
+        ActionBar.Message = planPath;
+        ActionBar.IsOpen = true;
+    }
+
     // Phase 1 (GitService / BuildService) wires these to real actions.
     private void StubAction_Click(object sender, RoutedEventArgs e)
     {
+        ActionBar.Severity = InfoBarSeverity.Warning;
+        ActionBar.Title = "Not wired yet";
+        ActionBar.Message = "Page actions arrive with the Phase 1 services (GitService / BuildService).";
         ActionBar.IsOpen = true;
     }
 }

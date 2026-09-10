@@ -7,11 +7,11 @@ build/run/commit/tag/push and "new app from template" scaffolding. DevDesk and
 the DevTem-WinUI 3 template live together in
 **`C:\Code\projects\DevEcosystem`**; other folders there are unrelated.
 
-> **Status: Phase 0 — shell + real scanner.** The shell, theme and navigation
-> are real; the **ProjectScanner** reads every repo inside `DevEcosystem`
-> (branch, status, last commits, version sync, remote host) with no network. The
-> remaining complex flows are stubbed in place — buttons show an InfoBar instead
-> of running. Scope is tracked in
+> **Status: Phase 0 complete.** The shell, theme and navigation are real; the
+> **ProjectScanner** reads every repo inside `DevEcosystem` (branch, status,
+> last commits, version sync, remote host) with no network, and cards open
+> repos in Explorer / Visual Studio. Phase 1+ flows are stubbed in place —
+> buttons show an InfoBar instead of running. Scope is tracked in
 > `C:\Code\projects\DevEcosystem\DevDesk\docs\DEVDESK-PLAN.md`.
 
 ## Run it — no terminal (double-click)
@@ -42,10 +42,12 @@ dotnet run
 - **Dashboard**: summary cards (projects / clean / attention / remotes) and
   the project-card grid (branch, status, last commits, version pill, remote
   and dirty badges) — scanned live from the DevEcosystem folder, never
-  DevDesk itself.
+  DevDesk itself. **Click a card** to open the repo in Explorer or Visual
+  Studio.
 - **DevDesk**: a dedicated page for this app itself — real repo state read by
   the scanner (branch, version, commits) and its components (tests, plan doc,
-  scripts, CI workflow).
+  scripts, CI workflow), with live "open in Explorer" / "open plan doc"
+  actions.
 - **Loading**: any operation that may take a while (refresh/rescan, repo-state
   check) shows a progress overlay; the launcher shows a progress window while
   a rebuild runs.

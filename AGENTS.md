@@ -9,11 +9,12 @@ first before making changes.
 `C:\Code\projects` (branch, version, last commits, releases per channel,
 GitHub Actions, build/run) so the terminal is no longer needed.
 
-**Current status: Phase 0 — shell + real scanner.** The shell, sea-blue theme
-(light/dark), navigation and the **ProjectScanner** (git state + versions for
-every repo in the DevEcosystem folder) are real and working. Complex flows
-(BuildService, GitService write ops, GitHubService, TemplateService) are NOT
-wired yet — their buttons show an InfoBar instead. Scope lives in
+**Current status: Phase 0 complete.** The shell, sea-blue theme (light/dark),
+navigation and the **ProjectScanner** (git state + versions for every repo in
+the DevEcosystem folder, plus open-in-Explorer / open-in-VS card actions) are
+real and working. Phase 1+ flows (GitService write ops, BuildService,
+GitHubService, TemplateService) are NOT wired yet — their buttons show an
+InfoBar instead. Scope lives in
 `C:\Code\projects\DevEcosystem\DevDesk\docs\DEVDESK-PLAN.md`.
 
 ## Ecosystem layout (this app does not live alone)
@@ -78,7 +79,7 @@ dotnet build -c Debug -p:Platform=x64
   (`<DefaultItemExcludes>` in `DevDesk.csproj`).
 - They cover pure logic: `Models/ProjectModel.cs`,
   `Services/ProjectScanner.cs` (built against temp git repos, requires git),
-  `ThemeService`.
+  `Services/ProjectOpenActions.cs` (marker discovery), `ThemeService`.
 - Run them (the WinUI/XAML compiler needs a platform):
 
 ```powershell
@@ -101,11 +102,12 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `Models/ProjectModel.cs` | Project/Workspace card model + `CommitInfo` + `ComponentInfo`. |
 | `Services/ProjectScanner.cs` | **Phase 0 scanner** — walks the scan root (depth 2), detects repos by `.git`/project marker, reads branch, dirty/behind, remote host, last 3 commits, and csproj version (with 3-field sync check). Never lists DevDesk; returns it as the self workspace. |
 | `Services/GitRunner.cs` | Safe git process runner — argument lists only, output redirection, 15s timeout; git failure never throws (exit-code path). |
+| `Services/ProjectOpenActions.cs` | Open-in-Explorer / open-with-default-app (ShellExecute) + solution/project marker finder for cards — all argument-list safe, never throws. |
 | `Services/ThemeService.cs` | Applies System/Light/Dark to the window root. |
 | `Services/SettingsService.cs` | JSON settings (`%LocalAppData%\DevDesk\settings.json`), theme persisted. |
 | `Services/LoggingService.cs` | Serilog; `Logs/applog-YYYYMMDD.log` next to the exe. |
 | `Services/UpdateService.cs` / `AppInfo.cs` | Velopack wrapper / version accessors (from the template). |
-| `Pages/*` | Dashboard (cards grid, loading overlay), Projects (list + detail tabs), Templates (wizard layout), GitHub (Actions/releases), **DevDesk (the app itself — workspace + components)**, Settings, Diagnostics (log view). |
+| `Pages/*` | Dashboard (cards grid, loading overlay, **click a card → Open in Explorer / Open in VS**), Projects (list + detail tabs), Templates (wizard layout), GitHub (Actions/releases), **DevDesk (the app itself — workspace + components, open-explorer / open-plan actions)**, Settings, Diagnostics (log view). |
 | `Scripts/launch-dev.ps1` | **Build-if-needed + launch without a terminal (shortcut target); progress window during rebuild.** |
 | `Scripts/make-shortcut.ps1` | **Creates the desktop `DevDesk` shortcut.** |
 | `Scripts/build-and-release.ps1` | Release pipeline (from template; **single source of truth**). |

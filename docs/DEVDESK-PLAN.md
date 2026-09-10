@@ -5,13 +5,18 @@ handled through the terminal + GitHub website, for all projects living in
 `C:\Code\projects` — the DevTem-WinUI 3 template and DevDesk both live inside
 the `C:\Code\projects\DevEcosystem` folder (other folders there are unrelated).
 
-> Status: **Phase 0 (UI shell) implemented.** The ecosystem is organized under
+> Status: **Phase 0 complete.** The ecosystem is organized under
 > `C:\Code\projects\DevEcosystem`:
 > `DevDesk/` (this app — **own repo**, containing `DevDesk.Tests/` and
 > `docs/DEVDESK-PLAN.md`) · `DevTem WinUI 3/` (the template, own repo).
 > "Run the dev without a terminal" is handled by
 > `DevDesk/Scripts/launch-dev.ps1` + a desktop shortcut; reopen is instant
 > (rebuild only when a source actually changed, progress window while it runs).
+> The **ProjectScanner** (`Services/ProjectScanner.cs`) reads every repo in the
+> ecosystem (branch, dirty/behind, remote host, last commits, csproj version
+> sync) with no network, and cards open repos in Explorer / Visual Studio.
+> Everything else (GitService write ops, BuildService, GitHubService,
+> TemplateService) is Phase 1+.
 
 ---
 
@@ -222,14 +227,15 @@ Document this in DevDesk's own AGENTS.md so template consumers can converge.
 
 ## 8. Suggested phased roadmap ("don't do everything at once")
 
-### Phase 0 — Foundation (the shell + the scanner)  ✅ magnetic
-**Do:** Scaffold `C:\Code\projects\DevEcosystem\DevDesk` from the template (clone + rename +
+### Phase 0 — Foundation (the shell + the scanner)  ✅ done
+**Did:** Scaffold `C:\Code\projects\DevEcosystem\DevDesk` from the template (clone + rename +
 token replace, v0.0.1). Establish theme/branding (sea-blue accent, corners,
-light/dark), extended nav shell (Dashboard, Projects, Templates, Settings,
-Diagnostics), persistence (SettingsService + PasswordVault), reuse logging +
-Velopack. Build **ProjectScanner** + Dashboard cards (name, path, branch, last
-3 commits, remote hint, version badges). "Open in Explorer / open in VS" from
-cards. Move the ecosystem together (`DevEcosystem/`), add
+light/dark), extended nav shell (Dashboard, Projects, Templates, GitHub, DevDesk,
+Settings, Diagnostics), persistence (SettingsService — theme), reuse logging +
+Velopack. Built **ProjectScanner** + Dashboard cards (name, path, branch, last
+3 commits, remote hint, version badges + sync check). **Open in Explorer /
+open in VS from cards** (click a card → action menu; argument-list + ShellExecute
+only). Moved the ecosystem together (`DevEcosystem/`), added
 `Scripts/launch-dev.ps1` + `Scripts/make-shortcut.ps1` (desktop shortcut,
 no-terminal run, instant reopen via build stamp), the `DevDesk.Tests/` project,
 and the dedicated **DevDesk page** (this app's own workspace + components —
@@ -238,6 +244,12 @@ never listed among scanned projects).
 `PIgen App` as a Workspace and not crashing on `VS studio projects`), light+dark
 look right, `dotnet build -p:Platform=x64` green, app self-updates when
 installed.
+**Adapted for the scoped ecosystem:** the scan root is `DevEcosystem` (the
+user's decision), so `PIgen App` and `VS studio projects` are NOT scanned — the
+shape they prove (workspace repo with several projects + no remote, folder names
+with spaces) is exercised by the `ProjectScannerTests` workspace/no-remote and
+`ProjectOpenActions` tests instead. Build green (0 errors), **34/34 tests green**,
+launcher verified (rebuild ~8 s, reopen <1 s), app window confirmed.
 
 ### Phase 1 — Git depth + versions + templates
 **Do:** GitService read/write (full history pager, status, branch/tag list,

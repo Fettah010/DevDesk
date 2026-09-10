@@ -81,7 +81,7 @@
         <!-- Quick actions (stub: Phase 1 services) -->
         <Grid Grid.Row="1">
             <StackPanel Orientation="Horizontal" Spacing="10">
-                <Button x:Name="OpenExplorerButton" CornerRadius="8" Click="StubAction_Click">
+                <Button x:Name="OpenExplorerButton" CornerRadius="8" Click="OpenExplorerButton_Click">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE838;" FontSize="14"/>
                         <TextBlock Text="Open in Explorer"/>
@@ -93,7 +93,7 @@
                         <TextBlock Text="Run tests"/>
                     </StackPanel>
                 </Button>
-                <Button x:Name="OpenPlanButton" CornerRadius="8" Click="StubAction_Click">
+                <Button x:Name="OpenPlanButton" CornerRadius="8" Click="OpenPlanButton_Click">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE8A5;" FontSize="14"/>
                         <TextBlock Text="Open plan doc"/>

@@ -278,10 +278,12 @@
             Grid.Row="3"
             x:Name="ProjectsGrid"
             SelectionMode="None"
-            IsItemClickEnabled="False"
+            IsItemClickEnabled="True"
+            ItemClick="ProjectsGrid_ItemClick"
             ItemTemplate="{StaticResource ProjectCardTemplate}"
             ItemContainerStyle="{StaticResource ProjectCardContainerStyle}"
-            Padding="0,2,0,0"/>
+            Padding="0,2,0,0"
+            ToolTipService.ToolTip="Click a card for actions: open in Explorer / open in Visual Studio"/>
 
         <!-- Loading / progress overlay: shown while a (simulated) rescan runs.
              The real ProjectScanner will keep this visible for as long as the
