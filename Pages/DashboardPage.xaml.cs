@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using DevDesk.Models;
@@ -17,7 +19,7 @@ public sealed partial class DashboardPage : Page
     }
 
     // PLACEHOLDER: consumes SampleDataService until the real ProjectScanner
-    // lands in Phase 0. The card layout is final; only the data source changes.
+    // lands. The card layout is final; only the data source changes.
     private void LoadSampleProjects()
     {
         _projects = new List<ProjectModel>(SampleDataService.GetAll());
@@ -41,16 +43,29 @@ public sealed partial class DashboardPage : Page
         AttentionCountText.Text = attention.ToString();
         RemoteCountText.Text = remotes.ToString();
 
-        ProjectsCountPillText.Text = $"{_projects.Count} in C:\\Code\\projects";
-        ScanPathText.Text = "Scanning C:\\Code\\projects · depth 3";
+        ProjectsCountPillText.Text = $"{_projects.Count} in DevEcosystem";
+        ScanPathText.Text = $"Scanning {SampleDataService.ScanRoot} · depth 2 · excludes DevDesk";
         LastRefreshText.Text = "Updated just now";
         SubtitleText.Text = attention == 0
             ? "All projects are healthy."
             : $"{attention} project(s) need attention.";
     }
 
-    private void RefreshButton_Click(object sender, RoutedEventArgs e)
+    // Simulates a scan long enough to show the loading overlay; the real
+    // ProjectScanner will drive the same BusyOverlay for its actual duration.
+    private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
+        RefreshButton.IsEnabled = false;
+        BusyOverlay.Visibility = Visibility.Visible;
+        BusyRing.IsActive = true;
+        LastRefreshText.Text = "Refreshing…";
+
+        await Task.Delay(450);
+
         LoadSampleProjects();
+
+        BusyRing.IsActive = false;
+        BusyOverlay.Visibility = Visibility.Collapsed;
+        RefreshButton.IsEnabled = true;
     }
 }

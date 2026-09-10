@@ -12,14 +12,17 @@ the DevTem-WinUI 3 template live together in
 > ProjectScanner lands. Complex flows are stubbed in place — buttons show an
 > InfoBar instead of running — so the layout is a faithful picture of the
 > finished app. Scope is tracked in
-> `C:\Code\projects\DevEcosystem\DEVDESK-PLAN.md`.
+> `C:\Code\projects\DevEcosystem\DevDesk\docs\DEVDESK-PLAN.md`.
 
 ## Run it — no terminal (double-click)
 
-There is a **`DevDesk`** shortcut on the desktop: it builds (incrementally)
-and launches the app, so you never type `dotnet build` / `dotnet run`.
+There is a **`DevDesk`** shortcut on the desktop: it launches the app, so you
+never type `dotnet build` / `dotnet run`. Opening it is snappy (< 1 s) when
+the app is already built — the launcher only rebuilds when a source file
+actually changed (a small progress window shows during the rebuild), then
+reuses that build on every reopen.
 
-- `Scripts\launch-dev.ps1` — build + start (what the shortcut runs).
+- `Scripts\launch-dev.ps1` — build (only when needed) + start.
 - `Scripts\make-shortcut.ps1` — (re)creates the desktop shortcut; run it if
   the link is ever missing or the project has moved.
 
@@ -38,7 +41,13 @@ dotnet run
   Diagnostics — with an animated (`EntranceNavigationTransitionInfo`) Frame.
 - **Dashboard**: summary cards (projects / clean / attention / remotes) and
   the project-card grid (branch, status, last commits, version pill, remote
-  and dirty badges).
+  and dirty badges) — currently lists only the projects inside the
+  DevEcosystem folder, never DevDesk itself.
+- **DevDesk**: a dedicated page for this app itself — repo state, commits and
+  its components (tests, plan doc, scripts, CI workflow).
+- **Loading**: any operation that may take a while (refresh/rescan, repo-state
+  check) shows a progress overlay; the launcher shows a progress window while
+  a rebuild runs.
 - **Projects**: two-pane list + detail with Overview / Commits / Releases /
   Actions tabs — all placeholder content.
 - **Templates**: the "new project from template" wizard layout (steps, name &
@@ -60,17 +69,18 @@ dotnet run
 ```
 MainWindow.xaml(.cs)   # Shell: custom title bar + NavigationView + theme toggle
 App.xaml               # Sea-blue theme dictionaries (light/dark) + shared card style
-Models/ProjectModel.cs # Project / workspace card model
+Models/ProjectModel.cs # Project / workspace card model + ComponentInfo
 Services/              # LoggingService (Serilog), SettingsService (JSON),
                        # ThemeService, UpdateService, SampleDataService (placeholder)
-Pages/                 # Dashboard, Projects, Templates, GitHub, Settings, Diagnostics
-Scripts/launch-dev.ps1        # Build + launch without a terminal (shortcut target)
+Pages/                 # Dashboard, Projects, Templates, GitHub, DevDesk (self), Settings, Diagnostics
+Scripts/launch-dev.ps1        # Build-if-needed + launch without a terminal (shortcut target)
 Scripts/make-shortcut.ps1     # Creates the desktop "DevDesk" shortcut
 Scripts/build-and-release.ps1 # Velopack release pipeline (from the template)
+DevDesk.Tests/                # xunit tests — live INSIDE this repo (own project)
+docs/DEVDESK-PLAN.md          # the plan
 ```
 
-Sibling (outside this folder, by design): `C:\Code\projects\DevEcosystem\DevDesk.Tests`
-— the xunit test project, run with `dotnet test DevDesk.Tests -p:Platform=x64`.
+Tests run with `dotnet test DevDesk.Tests -p:Platform=x64` (from this folder).
 
 ## License
 

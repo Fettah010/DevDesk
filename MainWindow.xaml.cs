@@ -47,6 +47,7 @@ public sealed partial class MainWindow : Window
             "projects" => typeof(ProjectsPage),
             "templates" => typeof(TemplatesPage),
             "github" => typeof(GitHubPage),
+            "self" => typeof(DevDeskPage),
             "settings" => typeof(SettingsPage),
             "diagnostics" => typeof(DiagnosticsPage),
             _ => null

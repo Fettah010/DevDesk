@@ -12,6 +12,27 @@ public sealed class CommitInfo
 }
 
 /// <summary>
+/// A sub-part of a workspace repo (e.g. the test project or the docs of a
+/// self-hosted app). Shown on the dedicated "DevDesk" page.
+/// </summary>
+public sealed class ComponentInfo
+{
+    public required string Name { get; init; }
+    public required string RelativePath { get; init; }
+    public required string Kind { get; init; }
+
+    public string Glyph => Kind switch
+    {
+        "app" => "\uE756",
+        "tests" => "\uE9D9",
+        "docs" => "\uE8A5",
+        "scripts" => "\uE943",
+        "workflow" => "\uE7F4",
+        _ => "\uE8B7"
+    };
+}
+
+/// <summary>
 /// A detected project (or "workspace" — one git repo hosting several
 /// solutions). Populated by the ProjectScanner in a later phase; today fed by
 /// <see cref="DevDesk.Services.SampleDataService"/>.
@@ -42,4 +63,6 @@ public sealed class ProjectModel
         $"branch {Branch} · {(HasRemote ? RemoteHost : "local only")} · {StatusText}";
 
     public IReadOnlyList<CommitInfo> RecentCommits { get; init; } = Array.Empty<CommitInfo>();
+
+    public IReadOnlyList<ComponentInfo> Components { get; init; } = Array.Empty<ComponentInfo>();
 }

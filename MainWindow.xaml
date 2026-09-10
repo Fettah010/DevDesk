@@ -48,19 +48,19 @@
                         FontSize="11"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                 </StackPanel>
-            </StackPanel>
 
-            <!-- One-tap theme cycle: System -> Light -> Dark -> System. -->
-            <Button
-                x:Name="ThemeButton"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Center"
-                Margin="0,0,8,0"
-                CornerRadius="8"
-                Click="ThemeButton_Click"
-                ToolTipService.ToolTip="Theme - click to cycle System / Light / Dark">
-                <FontIcon Glyph="&#xE706;" FontSize="14"/>
-            </Button>
+                <!-- One-tap theme cycle: System -> Light -> Dark -> System. Lives on
+                     the left next to the title so it never overlaps the OS caption
+                     buttons (min/max/close) on the right. -->
+                <Button
+                    x:Name="ThemeButton"
+                    Margin="14,0,0,0"
+                    CornerRadius="8"
+                    Click="ThemeButton_Click"
+                    ToolTipService.ToolTip="Theme - click to cycle System / Light / Dark">
+                    <FontIcon Glyph="&#xE706;" FontSize="14"/>
+                </Button>
+            </StackPanel>
         </Grid>
 
         <NavigationView
@@ -92,6 +92,11 @@
                 <NavigationViewItem Content="GitHub" Tag="github">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE774;"/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="DevDesk" Tag="self">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE718;"/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>

@@ -282,5 +282,24 @@
             ItemTemplate="{StaticResource ProjectCardTemplate}"
             ItemContainerStyle="{StaticResource ProjectCardContainerStyle}"
             Padding="0,2,0,0"/>
+
+        <!-- Loading / progress overlay: shown while a (simulated) rescan runs.
+             The real ProjectScanner will keep this visible for as long as the
+             scan takes. -->
+        <Grid
+            x:Name="BusyOverlay"
+            Grid.RowSpan="4"
+            Visibility="Collapsed"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            Opacity="0.9">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                <ProgressRing x:Name="BusyRing" IsActive="False" Width="36" Height="36"/>
+                <TextBlock
+                    x:Name="BusyText"
+                    Text="Refreshing projects…"
+                    Style="{ThemeResource BodyTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Page>
