@@ -171,6 +171,36 @@ public class ProjectCatalogTests
         Assert.Equal(3, snapshot.RemoteCount);
     }
 
+    [Fact]
+    public async Task Catalog_UpdateProjectPublishesOneLocalRevisionWithoutAnotherScan()
+    {
+        var engine = new FakeScanEngine { Projects = new[] { Project("A") } };
+        var catalog = new ProjectCatalog(engine);
+        var original = await catalog.GetOrRefreshAsync();
+        var updatedProject = new ProjectModel
+        {
+            Name = "A",
+            Path = original.Projects[0].Path,
+            Branch = "feature",
+            Version = "1.0.0",
+            HasRemote = true,
+            RemoteOk = true,
+            Dirty = true,
+            StatusText = "Changes",
+        };
+        CatalogSnapshot? changed = null;
+        catalog.Changed += (_, snapshot) => changed = snapshot;
+
+        var replaced = catalog.UpdateProject(updatedProject);
+
+        Assert.True(replaced);
+        Assert.NotSame(original, catalog.Snapshot);
+        Assert.Equal("feature", Assert.Single(catalog.Snapshot.Projects).Branch);
+        Assert.True(Assert.Single(catalog.Snapshot.Projects).Dirty);
+        Assert.Same(catalog.Snapshot, changed);
+        Assert.Equal(1, catalog.ScanCount);
+    }
+
     internal static ProjectModel Project(
         string name,
         bool dirty = false,

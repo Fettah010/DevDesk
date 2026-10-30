@@ -1,9 +1,9 @@
 # DevDesk — Roadmap v0.1.0 → v1.0.0
 
-> **Status: PLAN ONLY.** No source, project, script or config file was changed when
-> this document was written (2026-10-30). The app is still the Phase-0 prototype at
-> `v0.0.1` (commit `b8ca378`). This file is the map; each release gets implemented
-> only when its section is turned into a work order (see §10).
+> **Status: ACTIVE ROADMAP.** This document records the initial plan and baseline
+> from 2026-10-30. v0.1.0 is published; v0.2.0 is in progress under
+> `docs/versions/V0.2.0.md`. This file remains the map; each release is implemented
+> from its own work order (see §10).
 >
 > **Supersedes:** `docs/DEVDESK-PLAN.md` (the Phase-0 plan; it is deleted in the
 > working tree at the time of writing and can be recovered with
@@ -1248,7 +1248,7 @@ package added without a work-order line naming its job.
 
 | # | Decision | Default if silent | Why it matters | Needed by |
 | --- | --- | --- | --- | --- |
-| D1 | GitHub repo for DevDesk releases (owner/name, private first?) | `Fettah010/DevDesk`, private until 1.0 | F1 blocks self-update and all release work | 0.1.0 |
+| D1 | GitHub repo for DevDesk releases (owner/name, private first?) | **Resolved by owner:** public `Fettah010/DevDesk` | F1 blocks self-update and all release work | 0.1.0 |
 | D2 | Code signing certificate (buy / use existing / ship unsigned) | Unsigned + SHA-256 + SmartScreen note | Installer trust; affects 1.0 "stable" claim | 0.9.0 |
 | D3 | Minimum OS: keep Win10 1809 or require Win11 | Keep Win10 1809 TFM, test Win11 only; drop at 1.0 if unverified | Test matrix size; WASDK 2.x support | 0.9.0 |
 | D4 | Channel vocabulary: stable / beta / dev (drop `alpha`) | Drop `alpha`; map any old tag to beta | F11; clients must read the channel being published | 0.1.0 |

@@ -15,7 +15,16 @@ allowed; the tag suffix (`-beta`, `-dev`) selects the release channel.
   `InformationalVersion` move together via `Scripts/bump-version.ps1`.
 - `LICENSE` (MIT) and this changelog.
 
-## [0.1.0-beta] — unreleased
+## [0.2.0-beta] — unreleased
+
+### Added
+
+- Local Git status, history, branches, remotes, tags, diffstat and capped file diffs.
+- Previewed stage, unstage, commit, fetch, fast-forward pull, push, branch, tag
+  and discard operations in the Projects detail page.
+- Merge/rebase conflict state with guarded abort and continue actions.
+
+## [0.1.0-beta] — 2026-10-30
 
 ### Added
 

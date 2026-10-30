@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using DevDesk.Models;
@@ -147,6 +148,48 @@ public sealed class ProjectCatalog
             ? RefreshAsync(cancellationToken, progress)
             : Task.FromResult(current);
     }
+
+    /// <summary>Publish fresh local state after a write without walking every repository.</summary>
+    public bool UpdateProject(ProjectModel updated)
+    {
+        ArgumentNullException.ThrowIfNull(updated);
+        CatalogSnapshot next;
+        lock (_gate)
+        {
+            var projectFound = false;
+            var projects = new List<ProjectModel>(_snapshot.Projects.Count);
+            foreach (var project in _snapshot.Projects)
+            {
+                if (PathsEqual(project.Path, updated.Path))
+                {
+                    projects.Add(updated);
+                    projectFound = true;
+                }
+                else
+                {
+                    projects.Add(project);
+                }
+            }
+
+            var self = _snapshot.Self;
+            if (self is not null && PathsEqual(self.Path, updated.Path))
+            {
+                self = updated;
+                projectFound = true;
+            }
+
+            if (!projectFound) return false;
+            next = new CatalogSnapshot(projects, self, _snapshot.CapturedAt, _snapshot.Duration);
+            _snapshot = next;
+        }
+
+        Changed?.Invoke(this, next);
+        return true;
+    }
+
+    private static bool PathsEqual(string left, string right) =>
+        string.Equals(Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar),
+            Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Scans, or joins the scan already running. The returned task yields the

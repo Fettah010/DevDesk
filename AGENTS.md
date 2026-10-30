@@ -9,15 +9,16 @@ first before making changes.
 `C:\Code\projects` (branch, version, last commits, releases per channel,
 GitHub Actions, build/run) so the terminal is no longer needed.
 
-**Current status: v0.1.0 "Trustworthy base".** The shell, sea-blue theme
+**Current status: v0.2.0 "Git, safely" in progress; v0.1.0 is published.** The shell, sea-blue theme
 (light/dark), navigation, the **ScanEngine** (git state + versions for every repo
 in the DevEcosystem folder), real open-in-Explorer / open-in-VS actions, window
 placement + single instance, the Diagnostics log/export pipeline and the
 **performance instrumentation** (startup marks, per-operation timings, budgets on
-screen) are real and working. Everything that is not built yet is **disabled with the version that
+screen) are real and working. Projects now has local Git reads and previewed,
+confirmed write operations. Everything that is not built yet is **disabled with the version that
 brings it, or an empty state naming it** — no fake rows, no buttons that look
-live but only apologise. Later flows (GitService write ops → v0.2.0, BuildService
-→ v0.3.0, TemplateService → v0.4.0, GitHubService → v0.5.0) are labelled, not
+live but only apologise. Later flows (BuildService → v0.3.0, TemplateService
+→ v0.4.0, GitHubService → v0.5.0) are labelled, not
 faked. The map is `docs\DEVDESK-ROADMAP.md`; each version's work order and
 evidence log is in `docs\versions\`.
 
@@ -132,6 +133,7 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `Services/ProjectCatalog.cs` / `AppServices.cs` | The in-session snapshot: one scan, joined by every page (`GetOrRefreshAsync`); `AppServices` is the service graph for pages with parameterless constructors. |
 | `Services/PathHygiene.cs` / `SelfLocator.cs` | What is never walked (bin/obj/.vs/Logs/worktrees) and how DevDesk finds its own repo. |
 | `Services/GitRunner.cs` | Safe git process runner — argument lists only, output redirection, timeout, cancellation, non-interactive; git failure never throws (exit-code path). |
+| `Services/GitService.cs` / `GitStatusParser.cs` | Typed read/write boundary over `GitRunner`: structured failures, credential redaction, detailed Git state, and explicit stage/commit/fetch/pull/push/branch/tag/conflict operations. UI writes require previews and confirmations. |
 | `Services/ProjectOpenActions.cs` | Open-in-Explorer / reveal-in-Explorer / open-with-default-app (ShellExecute) + solution/project marker finder — all argument-list safe, never throws. |
 | `Services/WindowPlacement.cs` / `SingleInstance.cs` / `Routes.cs` | Placement clamped onto a real display; one window per session (second launch focuses the first); the single list of navigation tags. |
 | `Services/ThemeService.cs` | Applies System/Light/Dark to the window root. |
@@ -140,7 +142,7 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `Services/LogRedaction.cs` / `RedactingTextFormatter.cs` / `DiagnosticsExport.cs` | Credential redaction on the way to disk and into the zip; the export bundle (`logs/`, `environment.txt`, `settings.redacted.json`, `manifest.json`). |
 | `Services/UpdateService.cs` / `AppInfo.cs` / `ReleaseChannels.cs` | Velopack wrapper (async only — never block the UI thread), version accessors, and the one tag→channel vocabulary. |
 | `Services/PerfCounters.cs` / `StartupTimeline.cs` | What makes "fast" a measurement (roadmap F18): `Interlocked` counters plus the last duration of every scan / update check / settings write, and the startup marks (process start → logging → Velopack → settings → window shown → first snapshot) measured from one origin and logged once each at `INF`. The budgets live in `PerfBudgets`. |
-| `Pages/*` | Dashboard (cards grid, loading overlay, **click a card → Open in Explorer / Open in VS**), Projects (list + real overview, open-solution / open-folder, empty states for later tabs), Templates (wizard preview, create disabled until v0.4.0), GitHub (empty states until v0.5.0), **DevDesk (the app itself — workspace + components, open-explorer / open-roadmap)**, Settings, Diagnostics (real log view + export + performance card). |
+| `Pages/*` | Dashboard (cards grid, loading overlay, **click a card → Open in Explorer / Open in VS**), Projects (real Overview/Changes/Commits/Branches, guarded Git operations, conflict handling), Templates (wizard preview, create disabled until v0.4.0), GitHub (empty states until v0.5.0), **DevDesk (the app itself — workspace + components, open-explorer / open-roadmap)**, Settings, Diagnostics (real log view + export + performance card). |
 | `ViewModels/*` | Page state for Dashboard / self / Diagnostics (`x:Bind`); code-behind stays for shell actions only. |
 | `Scripts/launch-dev.ps1` | **Build-if-needed + launch without a terminal (shortcut target); progress window during rebuild.** |
 | `Scripts/make-shortcut.ps1` | **Creates the desktop `DevDesk` shortcut.** |
@@ -157,7 +159,7 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 
 ## Versioning & releases
 
-Current version: **0.1.0** (tag `v0.1.0-beta`). Keep `<Version>`,
+Current version: **0.2.0-beta in progress** (v0.1.0-beta is published). Keep `<Version>`,
 `<AssemblyVersion>`, `<FileVersion>` in `DevDesk.csproj` in sync (three fields,
 always) — `Scripts/bump-version.ps1` rewrites them together and the test suite
 fails when they drift.

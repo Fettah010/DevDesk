@@ -58,8 +58,7 @@
 
         <Border Grid.Column="1" Width="1" Background="{ThemeResource ControlStrokeColorDefaultBrush}"/>
 
-        <!-- Right: detail. Only the overview reads real data; the other three tabs
-             say which version brings them instead of showing invented rows. -->
+        <!-- Right: local repository detail. GitHub enrichment remains in its own page. -->
         <Grid Grid.Column="2" Margin="18,0,0,0" RowSpacing="12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -168,13 +167,18 @@
 
             <ctk:Segmented x:Name="DetailTabs" Grid.Row="3" SelectionChanged="DetailTabs_SelectionChanged" HorizontalAlignment="Left">
                 <ctk:SegmentedItem Content="Overview"/>
+                <ctk:SegmentedItem Content="Changes"/>
                 <ctk:SegmentedItem Content="Commits"/>
-                <ctk:SegmentedItem Content="Releases"/>
-                <ctk:SegmentedItem Content="Actions"/>
+                <ctk:SegmentedItem Content="Branches"/>
             </ctk:Segmented>
 
-            <Grid Grid.Row="4" Margin="0,4,0,0">
-                <StackPanel x:Name="OverviewPanel" Spacing="10">
+            <Grid Grid.Row="4" Margin="0,4,0,0" RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <StackPanel x:Name="OverviewPanel" Grid.Row="2" Spacing="10">
                     <Border Style="{StaticResource DevCardStyle}" Padding="18">
                         <StackPanel Spacing="10">
                             <Grid ColumnSpacing="16">
@@ -220,61 +224,127 @@
                         </StackPanel>
                     </Border>
                     <TextBlock
-                        Text="Read-only: this comes from the local repository. Nothing here fetches, pulls or writes."
+                        Text="Git state comes from the local repository. Fetch, pull, push and write actions run only when you choose them."
                         Style="{ThemeResource CaptionTextBlockStyle}"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                 </StackPanel>
 
-                <StackPanel x:Name="CommitsPanel" Visibility="Collapsed" Spacing="10">
-                    <Border Style="{StaticResource DevCardStyle}" Padding="24">
-                        <StackPanel Spacing="6" HorizontalAlignment="Center">
-                            <FontIcon Glyph="&#xE8B7;" FontSize="22" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                            <TextBlock
-                                Text="Commit history arrives in v0.2.0"
-                                Style="{ThemeResource BodyStrongTextBlockStyle}"
-                                HorizontalAlignment="Center"/>
-                            <TextBlock
-                                Text="Browsing history needs the git service that also brings commit, branch and pull."
-                                Style="{ThemeResource CaptionTextBlockStyle}"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                TextAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
+                <StackPanel x:Name="ChangesPanel" Grid.Row="2" Visibility="Collapsed" Spacing="10">
+                    <TextBlock Text="Working tree changes" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="StageAllButton" Content="Stage all" Click="StageAllButton_Click" CornerRadius="8"/>
+                        <Button x:Name="StageSelectedButton" Content="Stage selected" Click="StageSelectedButton_Click" CornerRadius="8"/>
+                        <Button x:Name="UnstageSelectedButton" Content="Unstage selected" Click="UnstageSelectedButton_Click" CornerRadius="8"/>
+                        <Button x:Name="DiscardSelectedButton" Content="Discard selected…" Click="DiscardSelectedButton_Click" CornerRadius="8"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="CommitButton" Content="Commit staged…" Click="CommitButton_Click" Style="{ThemeResource AccentButtonStyle}" CornerRadius="8"/>
+                        <Button x:Name="RefreshGitButton" Content="Refresh" Click="RefreshGitButton_Click" CornerRadius="8"/>
+                        <Button x:Name="FetchButton" Content="Fetch" Click="FetchButton_Click" CornerRadius="8"/>
+                        <Button x:Name="PullButton" Content="Pull ff-only" Click="PullButton_Click" CornerRadius="8"/>
+                        <Button x:Name="PushButton" Content="Push" Click="PushButton_Click" CornerRadius="8"/>
+                    </StackPanel>
+                    <ListView x:Name="ChangesList" SelectionMode="Multiple" MaxHeight="320" SelectionChanged="ChangesList_SelectionChanged">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:GitFileStatus">
+                                <Grid ColumnSpacing="12" Padding="4,6">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="{x:Bind Kind}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Path}" TextWrapping="Wrap"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock x:Name="ChangesEmpty" Text="Working tree is clean." Visibility="Collapsed"
+                               Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBox x:Name="FileDiffPreview" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                             FontFamily="Consolas" FontSize="11" MinHeight="120" MaxHeight="240"
+                             PlaceholderText="Select a changed file to inspect its text diff."/>
                 </StackPanel>
 
-                <StackPanel x:Name="ReleasesPanel" Visibility="Collapsed" Spacing="10">
-                    <Border Style="{StaticResource DevCardStyle}" Padding="24">
-                        <StackPanel Spacing="6" HorizontalAlignment="Center">
-                            <FontIcon Glyph="&#xE896;" FontSize="22" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                            <TextBlock
-                                Text="Releases arrive in v0.5.0"
-                                Style="{ThemeResource BodyStrongTextBlockStyle}"
-                                HorizontalAlignment="Center"/>
-                            <TextBlock
-                                Text="Published versions per channel need the GitHub client and its token storage."
-                                Style="{ThemeResource CaptionTextBlockStyle}"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                TextAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
+                <StackPanel x:Name="CommitsPanel" Grid.Row="2" Visibility="Collapsed" Spacing="10">
+                    <TextBlock Text="Recent commits" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                    <ListView x:Name="CommitsList" SelectionMode="Single" MaxHeight="420" SelectionChanged="CommitsList_SelectionChanged">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:CommitInfo">
+                                <StackPanel Spacing="2" Padding="4,7">
+                                    <TextBlock Text="{x:Bind Subject}" TextWrapping="Wrap" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                                    <TextBlock Text="{x:Bind Author}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="{x:Bind Hash}" FontFamily="Consolas" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock x:Name="CommitsEmpty" Text="This repository has no commits yet." Visibility="Collapsed"
+                               Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <Button x:Name="LoadOlderCommitsButton" Content="Load older commits" Click="LoadOlderCommitsButton_Click" Visibility="Collapsed" HorizontalAlignment="Left"/>
+                    <TextBox x:Name="CommitDiffstat" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Consolas"
+                             FontSize="11" MinHeight="90" MaxHeight="220"
+                             PlaceholderText="Select a commit to inspect its diffstat."/>
                 </StackPanel>
 
-                <StackPanel x:Name="ActionsPanel" Visibility="Collapsed" Spacing="10">
-                    <Border Style="{StaticResource DevCardStyle}" Padding="24">
-                        <StackPanel Spacing="6" HorizontalAlignment="Center">
-                            <FontIcon Glyph="&#xE774;" FontSize="22" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                            <TextBlock
-                                Text="Action runs arrive in v0.5.0"
-                                Style="{ThemeResource BodyStrongTextBlockStyle}"
-                                HorizontalAlignment="Center"/>
-                            <TextBlock
-                                Text="Workflow runs, logs and re-runs come with the GitHub client and its token storage."
-                                Style="{ThemeResource CaptionTextBlockStyle}"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                TextAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
+                <StackPanel x:Name="BranchesPanel" Grid.Row="2" Visibility="Collapsed" Spacing="10">
+                    <TextBlock x:Name="TrackingSummary" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="CreateBranchButton" Content="New branch…" Click="CreateBranchButton_Click" CornerRadius="8"/>
+                        <Button x:Name="SwitchBranchButton" Content="Switch" Click="SwitchBranchButton_Click" CornerRadius="8"/>
+                        <Button x:Name="DeleteBranchButton" Content="Delete merged" Click="DeleteBranchButton_Click" CornerRadius="8"/>
+                        <Button x:Name="CreateTagButton" Content="Create local tag…" Click="CreateTagButton_Click" CornerRadius="8"/>
+                        <Button x:Name="DeleteTagButton" Content="Delete local tag" Click="DeleteTagButton_Click" CornerRadius="8"/>
+                    </StackPanel>
+                    <ListView x:Name="BranchesList" SelectionMode="Single" MaxHeight="520" SelectionChanged="BranchesList_SelectionChanged">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:GitBranchInfo">
+                                <Grid ColumnSpacing="12" Padding="4,7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="{x:Bind Name}" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Upstream}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock x:Name="BranchesEmpty" Text="No local branches were found." Visibility="Collapsed"
+                               Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock x:Name="RemoteSummary" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    <TextBlock Text="Local tags" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                    <ListView x:Name="TagsList" SelectionMode="Single" MaxHeight="180" SelectionChanged="TagsList_SelectionChanged">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:GitTagInfo">
+                                <StackPanel Spacing="2" Padding="4,5">
+                                    <TextBlock Text="{x:Bind Name}" FontFamily="Consolas"/>
+                                    <TextBlock Text="{x:Bind Subject}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock x:Name="TagsEmpty" Text="No local tags." Visibility="Collapsed"
+                               Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>
+
+                <StackPanel x:Name="OperationStatus" Grid.Row="1" Visibility="Collapsed" Orientation="Horizontal" Spacing="8">
+                    <ProgressRing x:Name="OperationProgress" Width="18" Height="18" IsActive="True"/>
+                    <TextBlock x:Name="OperationMessage" VerticalAlignment="Center"/>
+                    <Button x:Name="CancelOperationButton" Content="Cancel" Click="CancelOperationButton_Click" CornerRadius="8"/>
+                </StackPanel>
+
+                <Border x:Name="ConflictPanel" Grid.Row="0" Visibility="Collapsed" Style="{StaticResource DevCardStyle}" Padding="14">
+                    <StackPanel Spacing="8">
+                        <TextBlock x:Name="ConflictSummary" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                        <ItemsControl x:Name="ConflictFiles">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:GitFileStatus">
+                                    <TextBlock Text="{x:Bind Path}" TextWrapping="Wrap"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Open in Visual Studio" Click="OpenSolutionButton_Click" CornerRadius="8"/>
+                            <Button Content="Refresh status" Click="RefreshGitButton_Click" CornerRadius="8"/>
+                            <Button x:Name="AbortConflictButton" Content="Abort" Click="AbortConflictButton_Click" CornerRadius="8"/>
+                            <Button x:Name="ContinueConflictButton" Content="Continue" Click="ContinueConflictButton_Click" CornerRadius="8"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Grid>
     </Grid>

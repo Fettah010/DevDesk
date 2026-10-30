@@ -1,0 +1,49 @@
+name: Schedule v0.2.0 beta release
+
+# One-time UTC trigger requested on 2026-10-30. GitHub runs this independently
+# of the user's computer, creates the release tag, then dispatches release.yml.
+on:
+  schedule:
+    - cron: "31 1 31 10 *"
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  schedule-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create tag and dispatch gated release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='2026-10-31T01:31:00Z'
+          now="$(date -u +%s)"
+          target_epoch="$(date -u -d "$target" +%s)"
+          # GitHub cron repeats yearly; act only on the intended UTC date and
+          # after the target time. GitHub may delay scheduled workflow starts.
+          if (( now < target_epoch )) || [[ "$(date -u +%F)" != '2026-10-31' ]]; then
+            echo "Outside the one-time release window ($target); no action taken."
+            exit 0
+          fi
+
+          tag='v0.2.0-beta'
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to republish."
+            exit 1
+          fi
+          if gh api "repos/$GH_REPO/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists; refusing to retarget it."
+            exit 1
+          fi
+
+          gh api --method POST "repos/$GH_REPO/git/refs" \
+            -f "ref=refs/tags/$tag" \
+            -f "sha=$TARGET_SHA"
+          gh workflow run release.yml --repo "$GH_REPO" \
+            --ref main --field "tag=$tag"

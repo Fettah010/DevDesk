@@ -14,7 +14,9 @@ public sealed record GitResult(int ExitCode, string StdOut, string StdErr);
 /// <summary>
 /// Safe git process runner: argument LISTS (never interpolated shell strings —
 /// see AGENTS gotcha #7), redirected output, a hard timeout, and cancellation.
-/// Never writes, never touches the network.
+/// It does not decide whether a command is read-only or networked; the scanner
+/// calls only read-only commands, while <see cref="GitService"/> owns explicit
+/// user-confirmed operations.
 /// <para>
 /// Every process runs non-interactively (see <see cref="NonInteractiveEnvironment"/>):
 /// a scan that stops on a credential prompt would hang the whole app, and the
@@ -42,11 +44,20 @@ public static class GitRunner
     public static Task<GitResult> RunAsync(string workingDirectory, params string[] args) =>
         RunAsync(workingDirectory, CancellationToken.None, args);
 
+    public static Task<GitResult> RunAsync(
+        string workingDirectory,
+        CancellationToken cancellationToken,
+        params string[] args) =>
+        RunAsync(workingDirectory, DefaultTimeout, cancellationToken, args);
+
     public static async Task<GitResult> RunAsync(
         string workingDirectory,
+        TimeSpan timeout,
         CancellationToken cancellationToken,
         params string[] args)
     {
+        if (timeout <= TimeSpan.Zero)
+            return new GitResult(-1, string.Empty, "git timed out: timeout must be greater than zero.");
         var startInfo = new ProcessStartInfo("git")
         {
             WorkingDirectory = workingDirectory,
@@ -61,6 +72,10 @@ public static class GitRunner
             startInfo.Environment[pair.Key] = pair.Value;
         }
 
+        // -C is explicit as well as WorkingDirectory: packaged WinUI launches
+        // can inherit a different process directory from the repository path.
+        startInfo.ArgumentList.Add("-C");
+        startInfo.ArgumentList.Add(workingDirectory);
         foreach (var arg in args)
         {
             startInfo.ArgumentList.Add(arg);
@@ -89,7 +104,7 @@ public static class GitRunner
             try
             {
                 using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                limit.CancelAfter(DefaultTimeout);
+                limit.CancelAfter(timeout);
                 await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)

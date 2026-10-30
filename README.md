@@ -9,7 +9,8 @@ build/run/commit/tag/push and "new app from template" scaffolding. DevDesk and
 the DevTem-WinUI 3 template live together in
 **`C:\Code\projects\DevEcosystem`**; other folders there are unrelated.
 
-> **Status: v0.1.0 "Trustworthy base".** Everything on screen is either real or
+> **Status: v0.2.0 in progress — Git, safely.** v0.1.0 "Trustworthy base" is
+> published on GitHub. Everything on screen is either real or
 > clearly labelled with the version that will make it real — there are no fake
 > rows, no buttons that look live but only apologise, and no invented data. Today
 > DevDesk scans every repo inside `DevEcosystem` (branch, dirty state, last
@@ -51,9 +52,12 @@ dotnet run
   project-card grid (branch, status, last commits, version pill, remote and
   dirty badges) — scanned live from the DevEcosystem folder, never DevDesk
   itself. **Click a card** to open the repo in Explorer or Visual Studio.
-- **Projects**: two-pane list + detail. Overview is real (branch, version,
-  remote, working tree, last commit); the two open buttons work; Commits,
-  Releases and Actions say which version brings them.
+- **Projects**: two-pane list + detail. Overview, working tree changes, commit
+  history, branches, remotes and local tags read the selected repository.
+  Stage/unstage, commit/amend, fetch, fast-forward pull, push, branch and local
+  tag actions show a command preview before running; destructive actions require
+  typed confirmation. Conflicts can be inspected, opened in Visual Studio,
+  continued or aborted.
 - **DevDesk**: this app's own workspace — real repo state (branch, version,
   commits) and its components (tests, roadmap, scripts, CI workflow), with
   "open in Explorer" and "open roadmap".
@@ -70,8 +74,8 @@ dotnet run
 - **Loading**: any operation that may take a while (refresh/rescan, repo-state
   check) shows a progress overlay; the launcher shows a progress window while
   a rebuild runs.
-- **Not yet, and labelled as such**: commit/branch/push (v0.2.0), build / run /
-  publish (v0.3.0), the template wizard (v0.4.0), GitHub runs & releases and
+- **Not yet, and labelled as such**: build / run / publish (v0.3.0), the template
+  wizard (v0.4.0), GitHub runs & releases and
   the token (v0.5.0), filtering and multiple scan roots (v0.7.0).
 
 ## Tech stack
