@@ -10,7 +10,7 @@ public sealed partial class SettingsPage : Page
     {
         this.InitializeComponent();
 
-        VersionText.Text = $"DevDesk {AppInfo.Current.Version}";
+        VersionText.Text = $"DevDesk {AppInfo.Current.DisplayVersion}";
         SelectThemeIndex(SettingsService.Current.Theme);
     }
 
