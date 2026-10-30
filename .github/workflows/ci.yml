@@ -1,0 +1,100 @@
+name: CI
+
+# The gate every change goes through (roadmap F15): a build and the full test
+# suite on the platform DevDesk actually ships (x64), before anything can be
+# tagged. The required check for branch protection is the job named
+# "Build & test".
+#
+#   dotnet build DevDesk.csproj -c Release -p:Platform=x64
+#   dotnet test DevDesk.Tests -c Release -p:Platform=x64
+#
+# The same two commands run locally through Scripts/ci.ps1, so "it passed on my
+# machine" and "it passed in CI" mean the same thing. The .NET SDK comes from
+# global.json (single source of truth) - never a floating version, or a machine
+# and CI could compile with different compilers and disagree about warnings.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # global-json-file is the default, but naming it documents the contract:
+      # the SDK version lives in global.json and nowhere else.
+      - name: Setup .NET (from global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Show the toolchain
+        shell: pwsh
+        run: |
+          dotnet --version
+          git --version
+          git log -1 --oneline
+
+      # Keyed on the project files, not on the source: a code change does not
+      # invalidate the package cache, a dependency change does.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.*.props', '**/global.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build DevDesk.csproj -c Release -p:Platform=x64
+
+      - name: Test
+        shell: pwsh
+        run: |
+          dotnet test DevDesk.Tests -c Release -p:Platform=x64 `
+            --logger "trx;LogFileName=test-results.trx" `
+            --results-directory artifacts/test-results
+
+      # A red run must leave something to look at. `if: failure()` keeps the
+      # artifact upload from masking the failure it is reporting.
+      - name: Upload test results (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload build log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            **/obj/**/*.log
+            **/bin/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7

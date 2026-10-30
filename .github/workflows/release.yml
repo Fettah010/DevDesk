@@ -23,6 +23,12 @@ name: Release
 # No PAT is needed: the built-in GITHUB_TOKEN with `contents: write` is enough.
 # vpk is a pinned LOCAL tool (.config/dotnet-tools.json) - nothing is installed
 # globally.
+#
+# A tag can only publish when the gate is green: `release` needs `verify`, which
+# runs the same build and test commands as ci.yml. Velopack allows exactly one
+# release per version per channel, so the tag is also checked against the feed
+# first - a re-run of an already published version fails loudly instead of
+# half-overwriting a release that installed clients may already be updating from.
 
 on:
   push:
@@ -47,8 +53,35 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  # Same commands as .github/workflows/ci.yml, with no path filter: a release
+  # must never be publishable from a red tree.
+  verify:
+    name: Build & test
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET (from global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build DevDesk.csproj -c Release -p:Platform=x64
+
+      - name: Test
+        shell: pwsh
+        run: dotnet test DevDesk.Tests -c Release -p:Platform=x64
+
   release:
     name: Build & publish
+    needs: verify
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -58,10 +91,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup .NET
+      - name: Setup .NET (from global.json)
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - name: Restore pinned tools
         run: dotnet tool restore
@@ -77,6 +110,47 @@ jobs:
             throw "Tag '$tag' must look like vX.Y.Z, vX.Y.Z-beta or vX.Y.Z-dev."
           }
           Write-Output "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      # Velopack keeps one release per version per channel, and a client that
+      # already updated to vX must not see the same vX republished as a different
+      # build. A re-run of an existing tag therefore fails here, with the reason,
+      # instead of half-overwriting the feed.
+      - name: Refuse to republish an existing release
+        id: duplicate
+        shell: pwsh
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $uri = "https://api.github.com/repos/$env:REPO/releases/tags/$env:TAG"
+          $body = Join-Path $env:RUNNER_TEMP "release-$env:TAG.json"
+
+          # curl.exe rather than Invoke-WebRequest: -SkipHttpErrorCheck is
+          # PowerShell 7 only, and a 404 is an expected answer here, not an error.
+          $headers = @(
+            "-H", "Accept: application/vnd.github+json",
+            "-H", "X-GitHub-Api-Version: 2022-11-28"
+          )
+          if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+            $headers += @("-H", "Authorization: Bearer $env:GITHUB_TOKEN")
+          }
+
+          $status = & curl.exe -sS -o $body -w "%{http_code}" @headers $uri
+          Write-Output "GET $uri -> HTTP $status"
+
+          if ($status -eq "200") {
+            $release = Get-Content -LiteralPath $body -Raw | ConvertFrom-Json
+            $detail = if ($release.draft) { " (it is still a DRAFT - publish or delete it, then re-run)" } else { "" }
+            throw "Release $env:TAG already exists$detail. Bump the version with Scripts/bump-version.ps1 and tag again; a published version cannot be replaced."
+          }
+
+          if ($status -ne "404") {
+            $text = if (Test-Path $body) { Get-Content -LiteralPath $body -Raw } else { "" }
+            throw "Could not read the release feed for $env:TAG (HTTP $status): $text"
+          }
+
+          Write-Output "No existing release for $env:TAG - safe to publish."
 
       - name: Generate release notes
         shell: pwsh

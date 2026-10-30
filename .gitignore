@@ -4,6 +4,9 @@ obj/
 Releases/
 ReleasesLocal/
 
+# Local CI output (TRX files from Scripts/ci.ps1)
+artifacts/
+
 # App runtime output (Serilog)
 Logs/
 

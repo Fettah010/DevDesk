@@ -1,5 +1,7 @@
 # DevDesk — Developer Console for Windows 11
 
+[![CI](https://github.com/Fettah010/DevDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/Fettah010/DevDesk/actions/workflows/ci.yml)
+
 A WinUI 3 desktop app that gives a one-screen overview and management for
 every project in **C:\Code\projects**, so you don't need the terminal:
 dashboard cards, last commits, versions, releases per channel, GitHub Actions,
@@ -110,6 +112,31 @@ dotnet tool restore                                # pinned vpk, no global insta
   restart when an update is ready. Running from `bin\` (not installed) never
   touches the network.
 
+## Quality gate (CI)
+
+Every push and pull request to `main` runs `.github/workflows/ci.yml`: build in
+**Release**, then the full test suite, both `-p:Platform=x64` (WinUI refuses
+AnyCPU). The SDK comes from `global.json` (`10.0.403`, `rollForward:
+latestFeature`), so a machine with 10.0.5xx still builds and CI and local runs
+agree on the compiler. A tag cannot publish when that gate is red —
+`release.yml` runs the same commands as a `verify` job that `release` depends on,
+and refuses to republish a version that already exists on the feed.
+
+Run the same thing locally (this is the whole point of the script — no
+half-remembered flags):
+
+```powershell
+.\Scripts\ci.ps1                                  # Release build + all tests, TRX in artifacts\
+.\Scripts\ci.ps1 -Configuration Debug
+.\Scripts\ci.ps1 -Filter "FullyQualifiedName~DocsHonestyTests"
+```
+
+- **Required status check for branch protection: `Build & test`** (the CI job
+  name). Enabling that protection is a repository owner action (Settings →
+  Branches), not something a file in this repo can turn on.
+- A failing test leaves `artifacts/test-results/test-results.trx` locally and a
+  `test-results` artifact on the run, so a red gate comes with evidence.
+
 ## Repo layout
 
 ```
@@ -124,6 +151,7 @@ ViewModels/            # Dashboard / self / diagnostics state (x:Bind, no code-b
 Scripts/launch-dev.ps1        # Build-if-needed + launch without a terminal (shortcut target)
 Scripts/make-shortcut.ps1     # Creates the desktop "DevDesk" shortcut
 Scripts/build-and-release.ps1 # Velopack release pipeline (the single source of truth)
+Scripts/ci.ps1                # The CI gate locally: Release build + full test suite (x64)
 Scripts/smoke-ui.ps1          # Visits all 7 pages through UI Automation in an isolated data dir
 Scripts/verify-shell.ps1      # Proves placement, route restore, min size, single instance
 DevDesk.Tests/                # xunit tests — live INSIDE this repo (own project)

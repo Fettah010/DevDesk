@@ -112,9 +112,11 @@ dotnet test DevDesk.Tests -p:Platform=x64          # from DevDesk\
 dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 ```
 
-- The DAILY check is `dotnet build -p:Platform=x64` + `dotnet test -p:Platform=x64`.
-  Keep tests in `DevDesk.Tests/` — never add files directly under the app
-  project folders.
+- The DAILY check is `.\Scripts\ci.ps1` (Release build + full suite at x64 — the
+  same two commands CI runs; `-Configuration Debug` if you want debug bits).
+  `dotnet build -p:Platform=x64` + `dotnet test -p:Platform=x64` is the
+  equivalent by hand. Keep tests in `DevDesk.Tests/` — never add files directly
+  under the app project folders.
 
 ## Layout / key files
 
@@ -144,7 +146,9 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `Scripts/smoke-ui.ps1` | Visits all 7 destinations through UI Automation in a throw-away `DEVDESK_DATA_DIR`; asserts one catalog scan and no ERR/FTL lines. |
 | `Scripts/verify-shell.ps1` | Proves placement restore, last-route restore, minimum size, remembered navigation and the real update answer against the exe. |
 | `Scripts/capture-page.ps1` | Screenshots one destination for review/evidence. |
-| `.github/workflows/release.yml` | CI release pipeline (tag `v*` / manual dispatch). Useful later: DevDesk drives these for other projects. |
+| `Scripts/ci.ps1` | **The CI gate locally** — Release build + full test suite at `-p:Platform=x64`, TRX into `artifacts\`. Same two commands as `ci.yml`. |
+| `.github/workflows/ci.yml` | Push/PR gate on `main`: build Release, test, artefacts on failure. **Required check name: `Build & test`.** |
+| `.github/workflows/release.yml` | Tag (`v*`) / manual dispatch only; `verify` job runs the gate first, then `build-and-release.ps1`; refuses to republish an existing version. |
 | `docs/DEVDESK-ROADMAP.md` | The map: versions, findings, decisions, service boundaries. |
 | `docs/versions/` | Per-version work orders + the evidence log (filled as items land). |
 | `DevDesk.Tests/` | xunit tests (own project, inside this repo). |
@@ -203,11 +207,20 @@ drafts, and `--pre` is never passed.
 13. **Never block the UI thread on a Task.** `UpdateServiceTests` scans the app
     source for `.Wait()`/`.Result`/`GetResult()`; a deliberate one must carry a
     `block-exempt` comment explaining why there is no dispatcher to block.
+14. **Workflow `shell: pwsh` is PowerShell 7, the desktop shell here is 5.1.**
+    `-SkipHttpErrorCheck` (and other 7-only parameters) exist on the runner but
+    not in a local `powershell -File` run, so a step that must behave the same in
+    both places uses `curl.exe` for HTTP status codes. Test workflow snippets
+    locally before trusting them: the release duplicate-check was proven both
+    ways (HTTP 200 → refused, HTTP 404 → allowed) with the exact commands.
 
 ## Conventions
 
 - Keep `Scripts/build-and-release.ps1` the single source of truth for release
   logic; CI must delegate to it.
+- Keep `Scripts/ci.ps1` and `.github/workflows/ci.yml` in step: the script is the
+  local twin of the gate, and the plan's rule is that a local run and a CI run are
+  the same commands. If one changes, change both in the same commit.
 - Keep `launch-dev.ps1` / `make-shortcut.ps1` working — they are the product's
   core promise ("open the app by double-click, no terminal, instant reopen").
 - Tests live in this repo at `DevDesk.Tests/` — never add test files directly
