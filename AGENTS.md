@@ -12,8 +12,9 @@ GitHub Actions, build/run) so the terminal is no longer needed.
 **Current status: v0.1.0 "Trustworthy base".** The shell, sea-blue theme
 (light/dark), navigation, the **ScanEngine** (git state + versions for every repo
 in the DevEcosystem folder), real open-in-Explorer / open-in-VS actions, window
-placement + single instance, and the Diagnostics log/export pipeline are real and
-working. Everything that is not built yet is **disabled with the version that
+placement + single instance, the Diagnostics log/export pipeline and the
+**performance instrumentation** (startup marks, per-operation timings, budgets on
+screen) are real and working. Everything that is not built yet is **disabled with the version that
 brings it, or an empty state naming it** — no fake rows, no buttons that look
 live but only apologise. Later flows (GitService write ops → v0.2.0, BuildService
 → v0.3.0, TemplateService → v0.4.0, GitHubService → v0.5.0) are labelled, not
@@ -138,7 +139,8 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `Services/LoggingService.cs` | Serilog to `%LocalAppData%\DevDesk\Logs\applog-YYYYMMDD.log` (14 days) **plus** an in-memory ring (`LoggingService.Ring`, 2000 events) that Diagnostics reads; `DEVDESK_DATA_DIR` moves both settings and logs. |
 | `Services/LogRedaction.cs` / `RedactingTextFormatter.cs` / `DiagnosticsExport.cs` | Credential redaction on the way to disk and into the zip; the export bundle (`logs/`, `environment.txt`, `settings.redacted.json`, `manifest.json`). |
 | `Services/UpdateService.cs` / `AppInfo.cs` / `ReleaseChannels.cs` | Velopack wrapper (async only — never block the UI thread), version accessors, and the one tag→channel vocabulary. |
-| `Pages/*` | Dashboard (cards grid, loading overlay, **click a card → Open in Explorer / Open in VS**), Projects (list + real overview, open-solution / open-folder, empty states for later tabs), Templates (wizard preview, create disabled until v0.4.0), GitHub (empty states until v0.5.0), **DevDesk (the app itself — workspace + components, open-explorer / open-roadmap)**, Settings, Diagnostics (real log view + export). |
+| `Services/PerfCounters.cs` / `StartupTimeline.cs` | What makes "fast" a measurement (roadmap F18): `Interlocked` counters plus the last duration of every scan / update check / settings write, and the startup marks (process start → logging → Velopack → settings → window shown → first snapshot) measured from one origin and logged once each at `INF`. The budgets live in `PerfBudgets`. |
+| `Pages/*` | Dashboard (cards grid, loading overlay, **click a card → Open in Explorer / Open in VS**), Projects (list + real overview, open-solution / open-folder, empty states for later tabs), Templates (wizard preview, create disabled until v0.4.0), GitHub (empty states until v0.5.0), **DevDesk (the app itself — workspace + components, open-explorer / open-roadmap)**, Settings, Diagnostics (real log view + export + performance card). |
 | `ViewModels/*` | Page state for Dashboard / self / Diagnostics (`x:Bind`); code-behind stays for shell actions only. |
 | `Scripts/launch-dev.ps1` | **Build-if-needed + launch without a terminal (shortcut target); progress window during rebuild.** |
 | `Scripts/make-shortcut.ps1` | **Creates the desktop `DevDesk` shortcut.** |
@@ -213,6 +215,20 @@ drafts, and `--pre` is never passed.
     both places uses `curl.exe` for HTTP status codes. Test workflow snippets
     locally before trusting them: the release duplicate-check was proven both
     ways (HTTP 200 → refused, HTTP 404 → allowed) with the exact commands.
+15. **One clock, one owner per number.** Timed operations take a `TimeProvider`
+    (`StartupTimeline`, `PerfCounters` via `ProjectCatalog` / `SettingsService`),
+    never a bare `Stopwatch`: a test injects a manual clock instead of racing the
+    wall. The startup origin is that clock's timestamp at the first line of
+    `Main`, not `Environment.TickCount64` (boot-relative and millisecond-rounded,
+    which turns the first marks into 0). A number also has exactly one owner —
+    ring evictions come from `LogRingBufferSink.Dropped`, never a copy in
+    `PerfCounters`; `ProjectCatalog.ScanCount` stays per-catalog and agrees with
+    the process-wide counters because there is one catalog per process.
+16. **A performance row that has nothing to show says `—`, not a nearby number.**
+    "First snapshot" reads the `first snapshot` mark; a launch that restores
+    Diagnostics never scans, and borrowing the window-shown total for that row
+    would be a measurement of the wrong thing (the card's budgets are compared
+    in `PerfRow`, colour only — never a PASS/FAIL verdict).
 
 ## Conventions
 

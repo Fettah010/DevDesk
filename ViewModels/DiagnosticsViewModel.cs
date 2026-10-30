@@ -31,6 +31,8 @@ public sealed record LevelOption(string Label, LogEventLevel? Minimum)
 public sealed partial class DiagnosticsViewModel : ViewModelBase
 {
     private readonly LogRingBufferSink _ring;
+    private readonly PerfCounters _counters;
+    private readonly StartupTimeline _timeline;
     private readonly List<LogEntry> _all = new();
 
     [ObservableProperty]
@@ -52,6 +54,12 @@ public sealed partial class DiagnosticsViewModel : ViewModelBase
     public partial string BufferText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial IReadOnlyList<PerfRow> PerformanceRows { get; set; } = Array.Empty<PerfRow>();
+
+    [ObservableProperty]
+    public partial string PerformanceCountersText { get; set; } = string.Empty;
+
+    [ObservableProperty]
     public partial string? StatusMessage { get; set; }
 
     [ObservableProperty]
@@ -60,9 +68,14 @@ public sealed partial class DiagnosticsViewModel : ViewModelBase
     [ObservableProperty]
     public partial string ExportPath { get; set; } = string.Empty;
 
-    public DiagnosticsViewModel(LogRingBufferSink ring)
+    public DiagnosticsViewModel(
+        LogRingBufferSink ring,
+        PerfCounters? counters = null,
+        StartupTimeline? timeline = null)
     {
         _ring = ring ?? throw new ArgumentNullException(nameof(ring));
+        _counters = counters ?? PerfCounters.Current;
+        _timeline = timeline ?? StartupTimeline.Current;
 
         Levels = new ReadOnlyCollection<LevelOption>(new List<LevelOption>
         {
@@ -93,6 +106,7 @@ public sealed partial class DiagnosticsViewModel : ViewModelBase
         _all.Clear();
         _all.AddRange(_ring.Snapshot());
         ApplyFilter();
+        RefreshPerformance();
     }
 
     /// <summary>One live event, already redacted by the sink.</summary>
@@ -218,6 +232,96 @@ public sealed partial class DiagnosticsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(EmptyVisibility));
         OnPropertyChanged(nameof(ListVisibility));
+    }
+
+    /// <summary>
+    /// Rebuilds the Performance card from the counters and the startup timeline.
+    /// Read on demand (page load / Refresh) rather than on a timer: the numbers are
+    /// a baseline, and a live-updating card would be a second scan of the same data
+    /// on the UI thread.
+    /// </summary>
+    private void RefreshPerformance()
+    {
+        var repos = _counters.LastScanProjects is { } count ? $"{count} repos" : null;
+
+        PerformanceRows = new List<PerfRow>
+        {
+            TimeRow(
+                "Startup · window shown",
+                _timeline.Elapsed(StartupTimeline.WindowShown),
+                PerfBudgets.StartupToWindow,
+                "budget 400 ms · M2"),
+            // Not Total: when the restored route never asks for cards (Diagnostics
+            // itself does not), there is no first snapshot, and printing the
+            // window-shown number under this label would be a measurement of the
+            // wrong thing. "—" is the honest answer until a scan lands.
+            TimeRow(
+                "Startup · first snapshot",
+                _timeline.Elapsed(StartupTimeline.FirstSnapshot),
+                PerfBudgets.StartupTotal,
+                "budget 700 ms · M1"),
+            TimeRow(
+                "Last scan",
+                _counters.LastScan,
+                PerfBudgets.Scan,
+                "budget 1.5 s · M3",
+                repos),
+            TimeRow(
+                "Last update check",
+                _counters.LastUpdateCheck,
+                null,
+                "network — no local budget"),
+            TimeRow(
+                "Last settings write",
+                _counters.LastSettingsWrite,
+                PerfBudgets.SettingsWrite,
+                "budget 20 ms · §6.3"),
+            ByteRow(
+                "Working set",
+                _counters.WorkingSetBytes,
+                PerfBudgets.WorkingSetBytes,
+                "budget 300 MB · M5"),
+        };
+
+        // Ring evictions come from the ring, not from a second counter: one number,
+        // one owner (see PerfCounters).
+        PerformanceCountersText =
+            $"scans {_counters.Scans} · update checks {_counters.UpdateChecks} · " +
+            $"settings writes {_counters.SettingsWrites} · failures {_counters.Failures} · " +
+            $"ring evictions {_ring.Dropped}";
+    }
+
+    private static PerfRow TimeRow(
+        string label,
+        TimeSpan? value,
+        TimeSpan? budget,
+        string budgetText,
+        string? valueSuffix = null)
+    {
+        var text = PerfCounters.FormatDuration(value);
+        if (valueSuffix is not null && value is not null)
+        {
+            text = $"{text} · {valueSuffix}";
+        }
+
+        return new PerfRow(label, text, budgetText, Compare(value?.TotalMilliseconds, budget?.TotalMilliseconds));
+    }
+
+    private static PerfRow ByteRow(string label, long value, long budget, string budgetText) =>
+        new(
+            label,
+            PerfCounters.FormatBytes(value),
+            budgetText,
+            value <= budget ? PerfTone.Within : PerfTone.Over);
+
+    private static PerfTone Compare(double? value, double? budget)
+    {
+        if (value is not { } measured || budget is not { } limit)
+        {
+            return PerfTone.Muted;
+        }
+
+        return measured <= limit ? PerfTone.Within : PerfTone.Over;
     }
 
     partial void OnSelectedLevelChanged(LevelOption value) => ApplyFilter();

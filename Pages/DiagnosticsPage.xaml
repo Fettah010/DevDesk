@@ -6,10 +6,12 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:DevDesk.Models"
+    xmlns:vm="using:DevDesk.ViewModels"
     mc:Ignorable="d">
 
     <Grid Padding="28,20,28,24" RowSpacing="14">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -164,7 +166,74 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="3" Style="{StaticResource DevCardStyle}" Padding="6">
+        <!-- Performance card: the numbers roadmap §6.3 puts budgets on (F18). A
+             value is tinted against its budget and never labelled PASS/FAIL: being
+             20 ms over a 700 ms target is information, not an incident. -->
+        <Border Grid.Row="3" Style="{StaticResource DevCardStyle}" Padding="14,10">
+            <StackPanel Spacing="8">
+                <Grid>
+                    <TextBlock
+                        Text="PERFORMANCE"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                    <TextBlock
+                        Text="{x:Bind ViewModel.PerformanceCountersText, Mode=OneWay}"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        HorizontalAlignment="Right"
+                        TextTrimming="CharacterEllipsis"/>
+                </Grid>
+
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.PerformanceRows, Mode=OneWay}">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout
+                            MinItemWidth="170"
+                            MinColumnSpacing="18"
+                            MinRowSpacing="10"
+                            MaximumRowsOrColumns="3"
+                            ItemsStretch="Fill"/>
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PerfRow">
+                            <StackPanel Spacing="1">
+                                <TextBlock
+                                    Text="{x:Bind Label}"
+                                    Style="{ThemeResource CaptionTextBlockStyle}"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+
+                                <!-- One TextBlock per tone, only one visible: WinUI has
+                                     no data triggers, and this keeps the brush inside
+                                     the theme system instead of guessing colours. -->
+                                <TextBlock
+                                    Text="{x:Bind ValueText}"
+                                    Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Visibility="{x:Bind MutedVisibility}"/>
+                                <TextBlock
+                                    Text="{x:Bind ValueText}"
+                                    Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                    Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                    Visibility="{x:Bind WithinVisibility}"/>
+                                <TextBlock
+                                    Text="{x:Bind ValueText}"
+                                    Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                    Visibility="{x:Bind OverVisibility}"/>
+
+                                <TextBlock
+                                    Text="{x:Bind BudgetText}"
+                                    Style="{ThemeResource CaptionTextBlockStyle}"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="4" Style="{StaticResource DevCardStyle}" Padding="6">
             <Grid>
                 <ListView
                     x:Name="LogList"

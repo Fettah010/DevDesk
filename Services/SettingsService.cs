@@ -40,15 +40,27 @@ public sealed class SettingsService
 
     private readonly JsonStore _store;
     private readonly object _gate = new();
+    private readonly TimeProvider _time;
+    private readonly PerfCounters _counters;
 
     private JsonObject _raw = new();
     private AppSettings _settings = new();
 
-    public SettingsService(string? dataDirectory = null)
+    public SettingsService(
+        string? dataDirectory = null,
+        TimeProvider? time = null,
+        PerfCounters? counters = null)
     {
         var directory = string.IsNullOrWhiteSpace(dataDirectory) ? ResolveDataDirectory() : dataDirectory;
         _store = new JsonStore(Path.Combine(directory, "settings.json"));
+        _time = time ?? TimeProvider.System;
+        _counters = counters ?? PerfCounters.Current;
         LastLoad = Load();
+
+        // Logging is initialised *after* this (the log directory lives beside
+        // settings.json, so reading settings is what makes that path known), so
+        // this mark waits in the timeline and is flushed with the others.
+        StartupTimeline.Current.Mark(StartupTimeline.SettingsLoaded);
     }
 
     public AppSettings Settings => _settings;
@@ -104,6 +116,9 @@ public sealed class SettingsService
     {
         lock (_gate)
         {
+            var started = _time.GetTimestamp();
+            var outcome = PerfOutcome.Ok;
+
             try
             {
                 _raw = SettingsProjection.Merge(_settings, _raw);
@@ -111,7 +126,16 @@ public sealed class SettingsService
             }
             catch (Exception ex)
             {
+                outcome = PerfOutcome.Failed;
                 LoggingService.Log.Error(ex, "Failed to save settings to {Path}", _store.Path);
+            }
+            finally
+            {
+                // §6.3 budgets a settings write at 20 ms; the number is measured
+                // around the real file write, under the same lock.
+                _counters.RecordSettingsWrite(
+                    _time.GetElapsedTime(started, _time.GetTimestamp()),
+                    outcome);
             }
         }
     }

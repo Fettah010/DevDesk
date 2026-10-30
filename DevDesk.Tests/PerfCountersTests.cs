@@ -1,0 +1,221 @@
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using DevDesk.Services;
+using DevDesk.ViewModels;
+using Xunit;
+
+namespace DevDesk.Tests;
+
+/// <summary>
+/// Instrumentation is only worth having if the numbers mean something: a mark is
+/// taken once, counters survive concurrent writers, a duration reads the same on
+/// screen as in the log, and the card compares against the roadmap's budgets.
+/// <para>
+/// Durations are driven by a manual <see cref="TimeProvider"/>, so none of these
+/// tests races the wall or fails on a slow machine.
+/// </para>
+/// </summary>
+public class PerfCountersTests
+{
+    [Fact]
+    public void Timeline_MarksAreMonotonic()
+    {
+        var clock = new ManualTimeProvider();
+        var timeline = new StartupTimeline(clock);
+
+        timeline.Mark(StartupTimeline.ProcessStart);
+        clock.Advance(TimeSpan.FromMilliseconds(120));
+        timeline.Mark(StartupTimeline.LoggingReady);
+        clock.Advance(TimeSpan.FromMilliseconds(260));
+        timeline.Mark(StartupTimeline.WindowShown);
+
+        var marks = timeline.Marks;
+
+        Assert.Equal(3, marks.Count);
+        Assert.Equal(TimeSpan.Zero, marks[0].Elapsed);
+        Assert.Equal(TimeSpan.FromMilliseconds(120), marks[1].Elapsed);
+        Assert.Equal(TimeSpan.FromMilliseconds(380), marks[2].Elapsed);
+
+        for (var index = 1; index < marks.Count; index++)
+        {
+            Assert.True(
+                marks[index].Elapsed >= marks[index - 1].Elapsed,
+                $"Mark '{marks[index].Name}' went backwards relative to '{marks[index - 1].Name}'.");
+        }
+
+        Assert.Equal(TimeSpan.FromMilliseconds(380), timeline.Total);
+        Assert.Equal(TimeSpan.FromMilliseconds(120), timeline.Elapsed(StartupTimeline.LoggingReady));
+        Assert.Null(timeline.Elapsed(StartupTimeline.FirstSnapshot));
+
+        // A repeated mark keeps the first number: "window shown" means the first
+        // time it was shown, not the last time somebody navigated.
+        clock.Advance(TimeSpan.FromSeconds(5));
+        Assert.Equal(TimeSpan.FromMilliseconds(380), timeline.Mark(StartupTimeline.WindowShown));
+        Assert.Equal(3, timeline.Marks.Count);
+    }
+
+    [Fact]
+    public void PerfCounters_IncrementWithoutLocks()
+    {
+        var counters = new PerfCounters();
+        const int iterations = 2000;
+
+        // The point of Interlocked is that no update is lost even though the scan,
+        // network and UI threads all write these at once.
+        Parallel.For(0, iterations, _ =>
+        {
+            counters.RecordScan(TimeSpan.FromMilliseconds(12), 8, PerfOutcome.Ok);
+            counters.RecordUpdateCheck(TimeSpan.FromMilliseconds(40), PerfOutcome.Ok);
+            counters.RecordSettingsWrite(TimeSpan.FromMilliseconds(3), PerfOutcome.Ok);
+            counters.RecordFailure();
+        });
+
+        Assert.Equal(iterations, counters.Scans);
+        Assert.Equal(iterations, counters.UpdateChecks);
+        Assert.Equal(iterations, counters.SettingsWrites);
+        Assert.Equal(iterations, counters.Failures);
+
+        counters.RecordScan(TimeSpan.FromMilliseconds(9), 0, PerfOutcome.Failed);
+
+        Assert.Equal(iterations + 1, counters.Scans);
+        Assert.Equal(iterations + 1, counters.Failures);
+        Assert.Equal(TimeSpan.FromMilliseconds(9), counters.LastScan);
+        Assert.Equal(0, counters.LastScanProjects);
+    }
+
+    [Fact]
+    public void PerfCounters_SkippedIsCountedButNeverBecomesTheLastMeasurement()
+    {
+        var counters = new PerfCounters();
+        counters.RecordUpdateCheck(TimeSpan.FromMilliseconds(50), PerfOutcome.Ok);
+        counters.RecordUpdateCheck(TimeSpan.FromMilliseconds(1), PerfOutcome.Skipped);
+        counters.RecordScan(TimeSpan.FromMilliseconds(300), 8, PerfOutcome.Ok);
+        counters.RecordScan(TimeSpan.FromMilliseconds(2), 0, PerfOutcome.Skipped);
+
+        // Attempts are visible; a skip is not a duration and does not erase the
+        // last real number.
+        Assert.Equal(2, counters.UpdateChecks);
+        Assert.Equal(TimeSpan.FromMilliseconds(50), counters.LastUpdateCheck);
+        Assert.Equal(2, counters.Scans);
+        Assert.Equal(TimeSpan.FromMilliseconds(300), counters.LastScan);
+        Assert.Equal(0, counters.Failures);
+    }
+
+    [Fact]
+    public void PerfCounters_FormatsDurations()
+    {
+        Assert.Equal("—", PerfCounters.FormatDuration(null));
+        Assert.Equal("0.4 ms", PerfCounters.FormatDuration(TimeSpan.FromMilliseconds(0.4)));
+        Assert.Equal("380 ms", PerfCounters.FormatDuration(TimeSpan.FromMilliseconds(380)));
+        Assert.Equal("1.24 s", PerfCounters.FormatDuration(TimeSpan.FromMilliseconds(1240)));
+        Assert.Equal("1m 05s", PerfCounters.FormatDuration(TimeSpan.FromSeconds(65)));
+
+        Assert.Equal("512 B", PerfCounters.FormatBytes(512));
+        Assert.Equal("300 MB", PerfCounters.FormatBytes(300L * 1024 * 1024));
+        Assert.Equal("1.5 GB", PerfCounters.FormatBytes(1610612736));
+    }
+
+    [Fact]
+    public void Diagnostics_PerformanceViewModel_MapsCounters()
+    {
+        var clock = new ManualTimeProvider();
+        var timeline = new StartupTimeline(clock);
+
+        timeline.Mark(StartupTimeline.ProcessStart);
+        clock.Advance(TimeSpan.FromMilliseconds(250));
+        timeline.Mark(StartupTimeline.WindowShown);
+        clock.Advance(TimeSpan.FromMilliseconds(150));
+        timeline.Mark(StartupTimeline.FirstSnapshot);
+
+        var counters = new PerfCounters();
+        counters.RecordScan(TimeSpan.FromMilliseconds(380), 8, PerfOutcome.Ok);
+        counters.RecordUpdateCheck(TimeSpan.FromMilliseconds(90), PerfOutcome.Ok);
+        counters.RecordSettingsWrite(TimeSpan.FromMilliseconds(4), PerfOutcome.Ok);
+
+        var viewModel = new DiagnosticsViewModel(new LogRingBufferSink(), counters, timeline);
+
+        var windowShown = Row(viewModel, "Startup · window shown");
+        Assert.Equal("250 ms", windowShown.ValueText);
+        Assert.Equal("budget 400 ms · M2", windowShown.BudgetText);
+        Assert.Equal(PerfTone.Within, windowShown.Tone);
+
+        Assert.Equal("400 ms", Row(viewModel, "Startup · first snapshot").ValueText);
+
+        var scan = Row(viewModel, "Last scan");
+        Assert.Equal("380 ms · 8 repos", scan.ValueText);
+        Assert.Equal(PerfTone.Within, scan.Tone);
+
+        var updateCheck = Row(viewModel, "Last update check");
+        Assert.Equal("90 ms", updateCheck.ValueText);
+        Assert.Equal(PerfTone.Muted, updateCheck.Tone); // no local budget to compare against
+
+        Assert.Equal("4 ms", Row(viewModel, "Last settings write").ValueText);
+
+        var memory = Row(viewModel, "Working set");
+        Assert.NotEqual("—", memory.ValueText);
+        Assert.NotEqual(PerfTone.Muted, memory.Tone);
+
+        Assert.Contains("scans 1", viewModel.PerformanceCountersText, StringComparison.Ordinal);
+        Assert.Contains("update checks 1", viewModel.PerformanceCountersText, StringComparison.Ordinal);
+        Assert.Contains("settings writes 1", viewModel.PerformanceCountersText, StringComparison.Ordinal);
+        Assert.Contains("failures 0", viewModel.PerformanceCountersText, StringComparison.Ordinal);
+        Assert.Contains("ring evictions 0", viewModel.PerformanceCountersText, StringComparison.Ordinal);
+
+        // Over budget is a colour, not a failure: the scan still counted as one.
+        counters.RecordScan(TimeSpan.FromSeconds(2), 8, PerfOutcome.Ok);
+        viewModel.Load();
+
+        var slow = Row(viewModel, "Last scan");
+        Assert.Equal("2.00 s · 8 repos", slow.ValueText);
+        Assert.Equal(PerfTone.Over, slow.Tone);
+        Assert.Contains("scans 2", viewModel.PerformanceCountersText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Diagnostics_PerformanceViewModel_NoSnapshotBeforeTheFirstScan()
+    {
+        var clock = new ManualTimeProvider();
+        var timeline = new StartupTimeline(clock);
+
+        timeline.Mark(StartupTimeline.ProcessStart);
+        clock.Advance(TimeSpan.FromMilliseconds(300));
+        timeline.Mark(StartupTimeline.WindowShown);
+
+        // A launch that restores Diagnostics (or any page that asks for no cards)
+        // never scans, so there is no "warm start to interactive cards" to report.
+        // Total still answers "how far did startup get"; the snapshot row must not
+        // borrow that number and call it M1.
+        var viewModel = new DiagnosticsViewModel(new LogRingBufferSink(), new PerfCounters(), timeline);
+
+        Assert.Equal(TimeSpan.FromMilliseconds(300), timeline.Total);
+
+        var snapshot = Row(viewModel, "Startup · first snapshot");
+        Assert.Equal("—", snapshot.ValueText);
+        Assert.Equal(PerfTone.Muted, snapshot.Tone);
+        Assert.Equal("300 ms", Row(viewModel, "Startup · window shown").ValueText);
+        Assert.Equal("—", Row(viewModel, "Last scan").ValueText);
+        Assert.Contains("scans 0", viewModel.PerformanceCountersText, StringComparison.Ordinal);
+    }
+
+    private static PerfRow Row(DiagnosticsViewModel viewModel, string label)
+    {
+        var row = viewModel.PerformanceRows.FirstOrDefault(candidate => candidate.Label == label);
+        Assert.NotNull(row);
+        return row!;
+    }
+
+    /// <summary>A clock whose timestamp only moves when the test says so.</summary>
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private long _ticks;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _ticks;
+
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(_ticks);
+
+        public void Advance(TimeSpan by) => _ticks += by.Ticks;
+    }
+}

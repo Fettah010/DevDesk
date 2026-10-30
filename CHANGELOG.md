@@ -24,6 +24,10 @@ allowed; the tag suffix (`-beta`, `-dev`) selects the release channel.
 - Settings schema v1 with atomic writes, migration from the theme-only file and
   corrupt-file recovery.
 - Window placement, minimum size and single-instance activation.
+- Instrumentation: startup marks (process start → logging → Velopack → settings →
+  window shown → first snapshot), a timing for every scan / update check /
+  settings write, and a Diagnostics **Performance** card that shows each number
+  beside its roadmap budget.
 - CI: build and test on every push; releases only from tags.
 
 ### Changed

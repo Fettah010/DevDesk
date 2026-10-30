@@ -56,6 +56,12 @@ public static class LoggingService
             "Logging initialized. Log path: {LogPath} (last {Count} files kept)",
             LogDirectoryPath,
             RetainedFileCount);
+
+        // The "process start" mark was taken before this method ran and has been
+        // waiting in the timeline; it is written now, together with "logging
+        // ready", so the log contains the whole startup in the real order.
+        StartupTimeline.Current.Mark(StartupTimeline.LoggingReady);
+        StartupTimeline.Current.AttachToLog();
     }
 
     /// <summary>

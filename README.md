@@ -60,7 +60,10 @@ dotnet run
 - **Diagnostics**: the last 2000 log events of this launch with a level and text
   filter, follow, copy, and a one-click export bundle
   (`logs/`, `environment.txt`, `settings.redacted.json`, `manifest.json`).
-  Credentials are redacted on the way to disk and into the bundle.
+  Credentials are redacted on the way to disk and into the bundle. A
+  **Performance** card shows the measured numbers — startup marks (window shown,
+  first snapshot), last scan, last update check, last settings write and working
+  set — each beside the budget it is compared with.
 - **Settings**: theme, scan roots and ignore list (read-only, what the scanner
   actually uses), update channel, and a **working** "Check for updates" that
   reports the real answer — including "not installed" when run from `bin\`.

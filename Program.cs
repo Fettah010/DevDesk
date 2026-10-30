@@ -13,6 +13,11 @@ public static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // The zero point every later startup mark is measured from (roadmap §6.3).
+        // It has to be the first thing that runs, and it has to be here rather than
+        // in App: the window is only one of the stages.
+        StartupTimeline.Current.Mark(StartupTimeline.ProcessStart);
+
         // Last line of defence: log any exception that escaped every other
         // handler so crash details always end up in the log files.
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
@@ -35,6 +40,8 @@ public static class Program
                 .OnFirstRun(_ => LoggingService.Log.Information("First run after install"))
                 .OnRestarted(_ => LoggingService.Log.Information("Restarted after update"))
                 .Run();
+
+            StartupTimeline.Current.Mark(StartupTimeline.VelopackDone);
 
             // Before any window exists: a second double-click hands its activation
             // to the running instance and this process exits quietly.

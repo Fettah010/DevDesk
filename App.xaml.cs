@@ -31,6 +31,10 @@ public partial class App : Application
         m_window = new MainWindow();
         m_window.Activate();
 
+        // M2 ("cached first paint") is measured to here, not to the constructor:
+        // a window that exists but is not on screen is not a start the user saw.
+        StartupTimeline.Current.Mark(StartupTimeline.WindowShown);
+
         // A second launch is redirected to this instance by SingleInstance; its
         // handler runs off the UI thread, so hop back before touching the window.
         SingleInstance.WatchForActivations(() =>

@@ -48,6 +48,13 @@ public sealed class UpdateService
 
     public static UpdateService Current { get; } = new();
 
+    /// <summary>
+    /// One clock for every timed update operation. This is a process singleton, so
+    /// the clock is not injectable here; the numbers are only ever read by the
+    /// Diagnostics card, which is not a timing-sensitive test.
+    /// </summary>
+    private static readonly TimeProvider Clock = TimeProvider.System;
+
     private readonly object _gate = new();
     private UpdateManager? _manager;
     private string _channel = ReleaseChannels.Default;
@@ -142,9 +149,14 @@ public sealed class UpdateService
     /// </summary>
     public async Task<UpdateCheckResult> CheckAsync(CancellationToken cancellationToken = default)
     {
+        var started = Clock.GetTimestamp();
+
         if (!IsInstalled)
         {
             LoggingService.Log.Information("Update check skipped: app is not installed");
+            PerfCounters.Current.RecordUpdateCheck(
+                Clock.GetElapsedTime(started, Clock.GetTimestamp()),
+                PerfOutcome.Skipped);
             return new UpdateCheckResult(UpdateCheckStatus.NotInstalled, NotInstalledMessage);
         }
 
@@ -153,6 +165,8 @@ public sealed class UpdateService
             var update = await Manager.CheckForUpdatesAsync()
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(true);
+            var elapsed = Clock.GetElapsedTime(started, Clock.GetTimestamp());
+            PerfCounters.Current.RecordUpdateCheck(elapsed, PerfOutcome.Ok);
 
             if (update is null)
             {
@@ -170,10 +184,17 @@ public sealed class UpdateService
         }
         catch (OperationCanceledException)
         {
+            PerfCounters.Current.RecordUpdateCheck(
+                Clock.GetElapsedTime(started, Clock.GetTimestamp()),
+                PerfOutcome.Skipped);
             throw;
         }
         catch (Exception ex)
         {
+            PerfCounters.Current.RecordUpdateCheck(
+                Clock.GetElapsedTime(started, Clock.GetTimestamp()),
+                PerfOutcome.Failed);
+
             LoggingService.Log.Error(ex, "Update check failed");
             return new UpdateCheckResult(
                 UpdateCheckStatus.Failed,
@@ -181,7 +202,27 @@ public sealed class UpdateService
         }
     }
 
-    public Task<UpdateInfo?> CheckForUpdatesAsync() => Manager.CheckForUpdatesAsync();
+    /// <summary>The background check the app runs at startup; timed like any other.</summary>
+    public async Task<UpdateInfo?> CheckForUpdatesAsync()
+    {
+        var started = Clock.GetTimestamp();
+
+        try
+        {
+            var update = await Manager.CheckForUpdatesAsync().ConfigureAwait(false);
+            PerfCounters.Current.RecordUpdateCheck(
+                Clock.GetElapsedTime(started, Clock.GetTimestamp()),
+                PerfOutcome.Ok);
+            return update;
+        }
+        catch (Exception)
+        {
+            PerfCounters.Current.RecordUpdateCheck(
+                Clock.GetElapsedTime(started, Clock.GetTimestamp()),
+                PerfOutcome.Failed);
+            throw;
+        }
+    }
 
     public Task DownloadUpdatesAsync(UpdateInfo update, Action<int>? progress = null) =>
         Manager.DownloadUpdatesAsync(update, progress, CancellationToken.None);

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using DevDesk.Models;
@@ -80,15 +79,19 @@ public sealed class CatalogSnapshot
 public sealed class ProjectCatalog
 {
     private readonly IScanEngine _engine;
+    private readonly TimeProvider _time;
+    private readonly PerfCounters _counters;
     private readonly object _gate = new();
 
     private CatalogSnapshot _snapshot = CatalogSnapshot.Empty;
     private Task<CatalogSnapshot>? _inFlight;
     private int _scanCount;
 
-    public ProjectCatalog(IScanEngine engine)
+    public ProjectCatalog(IScanEngine engine, TimeProvider? time = null, PerfCounters? counters = null)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+        _time = time ?? TimeProvider.System;
+        _counters = counters ?? PerfCounters.Current;
     }
 
     public ProjectCatalog()
@@ -177,7 +180,7 @@ public sealed class ProjectCatalog
         IProgress<ScanProgress>? progress)
     {
         Interlocked.Increment(ref _scanCount);
-        var stopwatch = Stopwatch.StartNew();
+        var started = _time.GetTimestamp();
 
         try
         {
@@ -189,13 +192,15 @@ public sealed class ProjectCatalog
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            stopwatch.Stop();
+            // The duration is measured with the injected clock, not a Stopwatch:
+            // a test can hand this a fixed clock instead of racing the wall.
+            var elapsed = _time.GetElapsedTime(started, _time.GetTimestamp());
 
             var snapshot = new CatalogSnapshot(
                 result.Projects,
                 result.Self,
                 DateTimeOffset.Now,
-                stopwatch.Elapsed);
+                elapsed);
 
             lock (_gate)
             {
@@ -203,11 +208,18 @@ public sealed class ProjectCatalog
                 _inFlight = null;
             }
 
+            _counters.RecordScan(elapsed, snapshot.Projects.Count, PerfOutcome.Ok);
+
+            // "Warm start" ends here: the moment a snapshot exists to paint. It is
+            // taken in the catalog rather than in a page so the total does not
+            // depend on which route was restored (Diagnostics renders no cards).
+            StartupTimeline.Current.Mark(StartupTimeline.FirstSnapshot);
+
             var scan = Volatile.Read(ref _scanCount);
             LoggingService.Log.Information(
                 "Catalog scan #{Scan} finished in {Elapsed} ms: {Projects} project(s), self {Self}",
                 scan,
-                (long)stopwatch.Elapsed.TotalMilliseconds,
+                (long)elapsed.TotalMilliseconds,
                 snapshot.Projects.Count,
                 snapshot.Self?.Name ?? "not found");
 
@@ -221,6 +233,13 @@ public sealed class ProjectCatalog
                 _inFlight = null;
             }
 
+            // A cancellation is a scan that did not finish: it is counted, but it
+            // must not become "the last scan" and pretend to have a duration.
+            _counters.RecordScan(
+                _time.GetElapsedTime(started, _time.GetTimestamp()),
+                0,
+                PerfOutcome.Skipped);
+
             LoggingService.Log.Information("Catalog scan cancelled");
             completion.TrySetCanceled(ex.CancellationToken);
         }
@@ -230,6 +249,13 @@ public sealed class ProjectCatalog
             {
                 _inFlight = null;
             }
+
+            // Projects is -1 on purpose: a failed scan found nothing, and the card
+            // should not print "0 repos" as if that were a real answer.
+            _counters.RecordScan(
+                _time.GetElapsedTime(started, _time.GetTimestamp()),
+                -1,
+                PerfOutcome.Failed);
 
             LoggingService.Log.Error(ex, "Catalog scan failed");
             completion.TrySetException(ex);
