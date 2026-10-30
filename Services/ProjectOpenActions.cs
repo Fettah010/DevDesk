@@ -81,6 +81,29 @@ public static class ProjectOpenActions
         }
     }
 
+    /// <summary>Opens Windows Explorer with <paramref name="filePath"/> selected.</summary>
+    public static bool RevealInExplorer(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            // /select,<path> is one argument to explorer; the argument list keeps
+            // a path with spaces intact (AGENTS gotcha #7).
+            var psi = new ProcessStartInfo("explorer.exe");
+            psi.ArgumentList.Add($"/select,{filePath}");
+            _ = Process.Start(psi);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>Opens a file with its default handler (e.g. .sln → Visual Studio).</summary>
     public static bool OpenWithDefaultApp(string filePath)
     {

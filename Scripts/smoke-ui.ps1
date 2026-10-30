@@ -18,7 +18,8 @@ param(
     [string]$Exe = "",
     [int]$SettleMs = 1200,
     [int]$MaxScans = 1,
-    [switch]$KeepOpen
+    [switch]$KeepOpen,
+    [switch]$KeepArtifacts
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,16 +32,18 @@ if (-not (Test-Path $Exe)) {
     throw "DevDesk.exe not found at $Exe. Build it first: dotnet build DevDesk.csproj -p:Platform=x64"
 }
 
+# A throw-away data directory: settings and logs land here instead of the real
+# %LocalAppData%\DevDesk, so the run is isolated, repeatable, and its log file
+# contains exactly this run's lines (no byte offsets, no cross-run noise).
+$DataDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("devdesk-smoke-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
+$env:DEVDESK_DATA_DIR = $DataDirectory
+$LogDirectory = Join-Path $DataDirectory "Logs"
+
 $Destinations = @("Dashboard", "Projects", "Templates", "GitHub", "DevDesk", "Settings", "Diagnostics")
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
-
-$LogDirectory = Join-Path (Split-Path $Exe -Parent) "Logs"
-$LogFile = Get-ChildItem $LogDirectory -Filter "applog-*.log" -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-$LogOffset = if ($LogFile) { $LogFile.Length } else { 0 }
 
 $process = Start-Process -FilePath $Exe -PassThru
 $failures = New-Object System.Collections.Generic.List[string]
@@ -104,7 +107,7 @@ finally {
     }
 }
 
-# Only the lines this run produced: start from the byte offset captured before launch.
+# Every log file in the throw-away directory was written by this run.
 $newLog = ""
 $existing = Get-ChildItem $LogDirectory -Filter "applog-*.log" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
@@ -112,7 +115,6 @@ $existing = Get-ChildItem $LogDirectory -Filter "applog-*.log" -ErrorAction Sile
 if ($existing) {
     $stream = [System.IO.File]::Open($existing.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
     try {
-        if ($existing.Length -ge $LogOffset) { $stream.Position = $LogOffset }
         $reader = New-Object System.IO.StreamReader($stream)
         $newLog = $reader.ReadToEnd()
     }
@@ -130,6 +132,7 @@ Write-Host ("    destinations visited : {0}/{1}" -f $visited.Count, $Destination
 if ($visited.Count -gt 0) { Write-Host ("                           {0}" -f ($visited -join " -> ")) }
 Write-Host ("    catalog scans        : {0} (allowed {1})" -f $scanCount, $MaxScans)
 Write-Host ("    log errors (ERR/FTL) : {0}" -f $errorLines.Count)
+Write-Host ("    log folder           : {0}" -f $LogDirectory)
 
 foreach ($failure in $failures) { Write-Host "    FAIL $failure" -ForegroundColor Red }
 foreach ($line in $errorLines) { Write-Host "    $line" -ForegroundColor Red }
@@ -137,11 +140,28 @@ foreach ($line in $errorLines) { Write-Host "    $line" -ForegroundColor Red }
 if ($failures.Count -eq 0 -and $visited.Count -ne $Destinations.Count) {
     $failures.Add("Only $($visited.Count) of $($Destinations.Count) destinations were visited.")
 }
+if (-not $existing) {
+    $failures.Add("No log file was written to $LogDirectory - logging is broken.")
+}
 if ($scanCount -gt $MaxScans) {
     $failures.Add("The catalog scanned $scanCount times; a full tour must reuse the first snapshot.")
 }
 if ($errorLines.Count -gt 0) {
     $failures.Add("The application logged $($errorLines.Count) error(s).")
+}
+
+if (-not $KeepOpen -and -not $KeepArtifacts) {
+    # The killed process can hold its log file for a moment; a few retries keep
+    # cleanup from turning a passing smoke run into a failure.
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $DataDirectory -Recurse -Force -ErrorAction Stop
+            break
+        }
+        catch {
+            Start-Sleep -Milliseconds 200
+        }
+    }
 }
 
 if ($failures.Count -gt 0) {

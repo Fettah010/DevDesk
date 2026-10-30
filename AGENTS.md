@@ -119,7 +119,7 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `Services/ProjectOpenActions.cs` | Open-in-Explorer / open-with-default-app (ShellExecute) + solution/project marker finder for cards — all argument-list safe, never throws. |
 | `Services/ThemeService.cs` | Applies System/Light/Dark to the window root. |
 | `Services/SettingsService.cs` | JSON settings (`%LocalAppData%\DevDesk\settings.json`), theme persisted. |
-| `Services/LoggingService.cs` | Serilog; `Logs/applog-YYYYMMDD.log` next to the exe. |
+| `Services/LoggingService.cs` | Serilog to `%LocalAppData%\DevDesk\Logs\applog-YYYYMMDD.log` (14 days) **plus** an in-memory ring (`LoggingService.Ring`, 2000 events) that Diagnostics reads; `DEVDESK_DATA_DIR` moves both settings and logs. |
 | `Services/UpdateService.cs` / `AppInfo.cs` | Velopack wrapper / version accessors (from the template). |
 | `Pages/*` | Dashboard (cards grid, loading overlay, **click a card → Open in Explorer / Open in VS**), Projects (list + detail tabs), Templates (wizard layout), GitHub (Actions/releases), **DevDesk (the app itself — workspace + components, open-explorer / open-plan actions)**, Settings, Diagnostics (log view). |
 | `Scripts/launch-dev.ps1` | **Build-if-needed + launch without a terminal (shortcut target); progress window during rebuild.** |
