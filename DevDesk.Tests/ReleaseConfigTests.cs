@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using DevDesk.Services;
 using Xunit;
 
@@ -98,6 +99,70 @@ public class ReleaseConfigTests
         Assert.Contains("dotnet tool restore", text, StringComparison.Ordinal);
         Assert.DoesNotContain("dotnet tool install --global", text, StringComparison.Ordinal);
         Assert.DoesNotContain("alpha", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolsManifest_PinsVpk()
+    {
+        var manifest = RepoLayout.Path(".config", "dotnet-tools.json");
+        Assert.True(File.Exists(manifest), "The pinned vpk manifest is missing: " + manifest);
+
+        using var document = JsonDocument.Parse(File.ReadAllText(manifest));
+        var root = document.RootElement;
+
+        Assert.True(root.GetProperty("isRoot").GetBoolean());
+        Assert.Equal(1, root.GetProperty("version").GetInt32());
+
+        var vpk = root.GetProperty("tools").GetProperty("vpk");
+        Assert.Equal("1.2.161", vpk.GetProperty("version").GetString());
+
+        var commands = vpk.GetProperty("commands").EnumerateArray().Select(c => c.GetString()).ToArray();
+        Assert.Contains("vpk", commands);
+    }
+
+    [Fact]
+    public void Release_PackVersionMatchesCsproj()
+    {
+        var declared = VersionSyncTests.ReadDeclaredVersion();
+        var expected = ExpectedChannel(declared.InformationalVersion);
+
+        var result = PowerShellRunner.Run(RepoLayout.Path("Scripts", "build-and-release.ps1"), "-CheckOnly");
+
+        if (result is null)
+        {
+            return; // no PowerShell here: the script is exercised on the dev machine/CI
+        }
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains($"version={declared.Version}", result.StdOut, StringComparison.Ordinal);
+        Assert.Contains($"channel={expected}", result.StdOut, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("-Version", "9.9.9")]
+    [InlineData("-Tag", "v9.9.9-beta")]
+    [InlineData("-Tag", "v0.1.0-alpha")]
+    public void Release_RefusesAVersionOrChannelTheAppDoesNotReport(string flag, string value)
+    {
+        var result = PowerShellRunner.Run(
+            RepoLayout.Path("Scripts", "build-and-release.ps1"),
+            "-CheckOnly",
+            flag,
+            value);
+
+        if (result is null)
+        {
+            return;
+        }
+
+        Assert.NotEqual(0, result.ExitCode);
+    }
+
+    private static string ExpectedChannel(string informationalVersion)
+    {
+        var dash = informationalVersion.IndexOf('-');
+        var suffix = dash >= 0 ? informationalVersion[(dash + 1)..] : string.Empty;
+        return ReleaseChannels.FromSuffix(suffix) ?? "unknown";
     }
 
     /// <summary>Every source/script/config file, minus build output and docs.</summary>

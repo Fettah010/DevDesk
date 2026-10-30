@@ -133,12 +133,15 @@ if ($UseLocalTool) {
 
 function Invoke-Vpk {
     param([string[]]$VpkArgs)
+    # Out-Host keeps vpk's output visible without polluting the function's
+    # return value: without it, $packCode would be an array of log lines and
+    # every successful pack would look like a failure.
     if ($UseLocalTool) {
-        & dotnet tool run vpk @VpkArgs
+        & dotnet tool run vpk @VpkArgs | Out-Host
     }
     else {
         Write-Warning "No .config/dotnet-tools.json - falling back to 'vpk' on PATH (unpinned)."
-        & vpk @VpkArgs
+        & vpk @VpkArgs | Out-Host
     }
     return $LASTEXITCODE
 }

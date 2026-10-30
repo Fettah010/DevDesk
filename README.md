@@ -74,6 +74,33 @@ dotnet run
   (argument lists, no shell interpolation); GitHub REST arrives in 0.5.0.
 - `1.8` is out of servicing (2026-09-24); `2.6.4` is the current stable line.
 
+## Install and update
+
+Releases are published to `https://github.com/Fettah010/DevDesk/releases` (the
+`<RepositoryUrl>` in `DevDesk.csproj`; nothing else names the repository).
+
+```powershell
+# Publish -> pack -> upload, all of it from the tag (channel comes from the suffix)
+dotnet tool restore                                # pinned vpk, no global install
+.\Scripts\build-and-release.ps1 -Tag v0.1.0-beta -Publish
+```
+
+- **The installer is unsigned.** Windows SmartScreen will show *"Windows
+  protected your PC"* on first run of `DevDesk-win-Setup.exe`: choose **More
+  info → Run anyway**. There is no code-signing certificate yet; this is
+  documented rather than worked around.
+- **Channels** are `stable`, `beta`, `dev`; `beta` is the default before 1.0. A
+  tag decides the channel: `v1.2.3` → stable, `v1.2.3-beta` → beta,
+  `v1.2.3-dev` → dev. `alpha` is retired and refused.
+- **A release must be published, not a draft.** `vpk upload github` leaves a
+  draft unless `--publish` is passed, and no client can see a draft — the script
+  warns when it would leave one.
+- **Never pass `--pre`.** GitHub's "prerelease" flag is not the Velopack
+  channel; `GithubSource(prerelease: false)` ignores prerelease-marked releases.
+- After installing once, the app checks the feed in the background and offers a
+  restart when an update is ready. Running from `bin\` (not installed) never
+  touches the network.
+
 ## Repo layout
 
 ```

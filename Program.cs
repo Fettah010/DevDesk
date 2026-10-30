@@ -25,6 +25,17 @@ public static class Program
 
         try
         {
+            // Logging first, so the Velopack hooks below have somewhere to write.
+            LoggingService.Initialize();
+
+            // Velopack requires this at the very beginning of Main: its hooks
+            // (first run, restart after update) must run before any app code.
+            // In a separate method it still worked, but vpk pack warned about it.
+            VelopackApp.Build()
+                .OnFirstRun(_ => LoggingService.Log.Information("First run after install"))
+                .OnRestarted(_ => LoggingService.Log.Information("Restarted after update"))
+                .Run();
+
             Run(args);
         }
         catch (Exception ex)
@@ -36,13 +47,6 @@ public static class Program
 
     static void Run(string[] args)
     {
-        LoggingService.Initialize();
-
-        VelopackApp.Build()
-            .OnFirstRun(_ => LoggingService.Log.Information("First run after install"))
-            .OnRestarted(_ => LoggingService.Log.Information("Restarted after update"))
-            .Run();
-
         LoggingService.Log.Information("DevDesk starting");
 
         WinRT.ComWrappersSupport.InitializeComWrappers();
