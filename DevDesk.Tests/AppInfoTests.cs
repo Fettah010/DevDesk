@@ -78,6 +78,6 @@ public class AppInfoTests
 
         Assert.False(string.IsNullOrWhiteSpace(url));
         Assert.Contains("DevDesk", url, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("winui-3-easy-template", url, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(RepoLayout.TemplateRepoName, url, StringComparison.OrdinalIgnoreCase);
     }
 }

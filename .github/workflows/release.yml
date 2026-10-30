@@ -3,15 +3,26 @@ name: Release
 # Builds, packs and uploads a Velopack release to GitHub Releases.
 #
 #   Trigger A - tag push (recommended):
-#     git tag v1.0.2 && git push origin v1.0.2
+#     git tag v0.1.0-beta && git push origin v0.1.0-beta
 #
-#   Trigger B - manual run from the Actions tab:
-#     "Run workflow" > enter a version > optional channel / pre-release
+#   Trigger B - manual run from the Actions tab: enter the same tag
+#     (e.g. v0.1.0-beta) so the channel is derived the same way.
 #
-# The version is taken from the pushed tag (Trigger A) or the input
-# (Trigger B). Publishing requires no PAT: the built-in GITHUB_TOKEN with
-# `contents: write` is enough. Release logic lives in
-# Scripts/build-and-release.ps1 (single source of truth, runnable locally too).
+# The tag is the input; the version and channel are derived from it by
+# Scripts/build-and-release.ps1 (roadmap O2):
+#   v1.2.3        -> version 1.2.3, channel stable
+#   v1.2.3-beta   -> version 1.2.3, channel beta
+#   v1.2.3-dev    -> version 1.2.3, channel dev
+# A tag whose version disagrees with DevDesk.csproj is refused: bump the version
+# (Scripts/bump-version.ps1) and commit it before tagging.
+#
+# The script publishes a *published* release (not a draft) and never passes
+# --pre: a prerelease-marked GitHub release is invisible to
+# GithubSource(prerelease:false), which is how DevDesk updates itself.
+#
+# No PAT is needed: the built-in GITHUB_TOKEN with `contents: write` is enough.
+# vpk is a pinned LOCAL tool (.config/dotnet-tools.json) - nothing is installed
+# globally.
 
 on:
   push:
@@ -19,24 +30,10 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to release, e.g. 1.0.2 (must be higher than the latest)"
+      tag:
+        description: "Release tag, e.g. v0.1.0-beta (channel comes from the suffix)"
         required: true
         type: string
-      channel:
-        description: "Release channel"
-        required: false
-        default: "stable"
-        type: choice
-        options:
-          - stable
-          - beta
-          - alpha
-      prerelease:
-        description: "Mark the GitHub release as a pre-release"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -66,29 +63,30 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Install vpk (Velopack CLI)
-        run: dotnet tool install --global vpk
+      - name: Restore pinned tools
+        run: dotnet tool restore
 
-      - name: Resolve version
-        id: version
+      - name: Resolve tag
+        id: tag
         shell: pwsh
         run: |
-          $version = if ("${{ github.event_name }}" -eq "push") { "${{ github.ref_name }}" } else { "${{ inputs.version }}" }
-          $version = $version.TrimStart('v')
-          if ([string]::IsNullOrWhiteSpace($version)) { throw "Could not determine a version." }
-          Write-Output "version=$version" >> $env:GITHUB_OUTPUT
-          Write-Output "tag=v$version" >> $env:GITHUB_OUTPUT
+          $tag = if ("${{ github.event_name }}" -eq "push") { "${{ github.ref_name }}" } else { "${{ inputs.tag }}" }
+          $tag = $tag.Trim()
+          if ([string]::IsNullOrWhiteSpace($tag)) { throw "Could not determine the release tag." }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-(beta|dev))?$') {
+            throw "Tag '$tag' must look like vX.Y.Z, vX.Y.Z-beta or vX.Y.Z-dev."
+          }
+          Write-Output "tag=$tag" >> $env:GITHUB_OUTPUT
 
       - name: Generate release notes
         shell: pwsh
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ steps.tag.outputs.tag }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
         run: |
           $notes = @(
-            "## DevDesk $env:VERSION",
+            "## DevDesk $env:TAG",
             "",
             "Automated release built from commit ``$env:SHA``.",
             "",
@@ -100,20 +98,12 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ steps.version.outputs.tag }}
-          CHANNEL: ${{ github.event_name == 'push' && 'stable' || inputs.channel }}
-          PRERELEASE: ${{ inputs.prerelease }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          $releaseArgs = @{
-            Version      = $env:VERSION
-            Channel      = $env:CHANNEL
-            Runtime      = "win-x64"
-            ReleaseNotes = "ReleaseNotes.md"
-            Download     = $true
-            Publish      = $true
-            Tag          = $env:TAG
-          }
-          if ($env:PRERELEASE -eq "true") { $releaseArgs["PreRelease"] = $true }
-          & ./Scripts/build-and-release.ps1 @releaseArgs
+          ./Scripts/build-and-release.ps1 `
+            -Tag $env:TAG `
+            -Runtime win-x64 `
+            -ReleaseNotes ReleaseNotes.md `
+            -Download `
+            -Publish
           if ($LASTEXITCODE -ne 0) { throw "Release script failed with exit code $LASTEXITCODE" }

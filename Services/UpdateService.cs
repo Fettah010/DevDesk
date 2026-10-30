@@ -7,15 +7,17 @@ using Velopack.Sources;
 namespace DevDesk.Services;
 
 /// <summary>
-/// Thin wrapper around the Velopack <see cref="UpdateManager"/> so pages
-/// stay simple and the update source can be swapped/reused from one place.
+/// Thin wrapper around the Velopack <see cref="UpdateManager"/> so pages stay
+/// simple and the update source is chosen in exactly one place.
+/// <para>
+/// The feed is the repository declared in <c>DevDesk.csproj</c>
+/// (<see cref="AppInfo.RepositoryUrl"/>), never a hardcoded URL: moving the
+/// repo moves the feed. The channel comes from <see cref="ReleaseChannels"/>,
+/// so the updater cannot drift from the tag parser.
+/// </para>
 /// </summary>
 public sealed class UpdateService
 {
-    // GitHub Releases feed that hosts this app's updates. Releases are
-    // created with Scripts/build-and-release.ps1 (vpk upload github).
-    public const string GitHubRepoUrl = "https://github.com/Fettah010/winui-3-easy-template";
-
     public const string NotInstalledMessage =
         "Updates are only available for installed apps. Run setup.exe once, then check again.";
 
@@ -24,12 +26,44 @@ public sealed class UpdateService
 
     public static UpdateService Current { get; } = new();
 
-    private readonly SemaphoreSlim _managerLock = new(1, 1);
+    private readonly object _gate = new();
     private UpdateManager? _manager;
-    private string _channel = "stable";
+    private string _channel = ReleaseChannels.Default;
 
     private UpdateService()
     {
+    }
+
+    /// <summary>GitHub Releases feed that hosts this app's updates.</summary>
+    public string FeedUrl => AppInfo.Current.RepositoryUrl;
+
+    /// <summary>Update channel: <c>stable</c>, <c>beta</c> (default) or <c>dev</c>.</summary>
+    public string Channel
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _channel;
+            }
+        }
+        set
+        {
+            var channel = ReleaseChannels.IsKnown(value) ? value : ReleaseChannels.Default;
+
+            lock (_gate)
+            {
+                if (_channel == channel)
+                {
+                    return;
+                }
+
+                _channel = channel;
+                _manager = null; // rebuilt lazily against the new channel
+            }
+
+            LoggingService.Log.Information("Update channel set to {Channel}", channel);
+        }
     }
 
     /// <summary>
@@ -44,8 +78,9 @@ public sealed class UpdateService
             {
                 return Manager.IsInstalled;
             }
-            catch
+            catch (Exception ex)
             {
+                LoggingService.Log.Warning(ex, "Could not determine whether the app is installed");
                 return false;
             }
         }
@@ -70,59 +105,46 @@ public sealed class UpdateService
     {
         get
         {
-            _managerLock.Wait();
-            try
+            lock (_gate)
             {
                 if (_manager is not null)
+                {
                     return _manager;
+                }
 
-                var options = new UpdateOptions();
-                if (_channel is not "stable")
-                    options.ExplicitChannel = _channel;
-
-                var token = ResolveToken();
-                LoggingService.Log.Information(
-                    "Update source: {RepoUrl} (channel {Channel}, token {HasToken})",
-                    GitHubRepoUrl, _channel, !string.IsNullOrWhiteSpace(token));
-
-                // accessToken is optional for public repos (unauthenticated
-                // GitHub is rate-limited to 60 requests/hour/IP). Set your PAT
-                // via GITHUB_TOKEN to avoid the limit.
-                var source = new GithubSource(
-                    GitHubRepoUrl,
-                    string.IsNullOrWhiteSpace(token) ? null : token,
-                    prerelease: false);
-
-                _manager = new UpdateManager(source, options, null);
+                _manager = BuildManager(_channel);
                 return _manager;
             }
-            finally
-            {
-                _managerLock.Release();
-            }
         }
+    }
+
+    private static UpdateManager BuildManager(string channel)
+    {
+        var options = new UpdateOptions();
+        if (channel != ReleaseChannels.Stable)
+        {
+            options.ExplicitChannel = channel;
+        }
+
+        var repoUrl = AppInfo.Current.RepositoryUrl;
+        var token = ResolveToken();
+
+        LoggingService.Log.Information(
+            "Update source: {RepoUrl} (channel {Channel}, token {HasToken})",
+            repoUrl, channel, !string.IsNullOrWhiteSpace(token));
+
+        // accessToken is optional for public repos (unauthenticated GitHub is
+        // rate-limited to 60 requests/hour/IP). Set GITHUB_TOKEN to avoid it.
+        var source = new GithubSource(
+            repoUrl,
+            string.IsNullOrWhiteSpace(token) ? null : token,
+            prerelease: false);
+
+        return new UpdateManager(source, options, null);
     }
 
     private static string ResolveToken() =>
         Environment.GetEnvironmentVariable("GITHUB_TOKEN") ?? string.Empty;
-
-    public void SetChannel(string channel)
-    {
-        if (_channel == channel)
-            return;
-
-        _managerLock.Wait();
-        try
-        {
-            LoggingService.Log.Information("Update channel set to {Channel}", channel);
-            _channel = channel;
-            _manager = null; // rebuilt lazily with the new channel
-        }
-        finally
-        {
-            _managerLock.Release();
-        }
-    }
 
     public Task<UpdateInfo?> CheckForUpdatesAsync() => Manager.CheckForUpdatesAsync();
 

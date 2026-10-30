@@ -59,6 +59,6 @@ public class VersionSyncTests
         var url = doc.Descendants("RepositoryUrl").FirstOrDefault()?.Value.Trim() ?? string.Empty;
 
         Assert.Contains("DevDesk", url, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("winui-3-easy-template", url, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(RepoLayout.TemplateRepoName, url, StringComparison.OrdinalIgnoreCase);
     }
 }

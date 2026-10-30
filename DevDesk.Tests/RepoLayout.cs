@@ -11,6 +11,13 @@ internal static class RepoLayout
 {
     public static string Root { get; } = FindRoot();
 
+    /// <summary>
+    /// The template repository name that must not appear in DevDesk's own code
+    /// or configuration. Split at runtime on purpose: tests that *guard* the
+    /// name must not themselves contain it, or the tree walk would flag them.
+    /// </summary>
+    public static string TemplateRepoName => "winui-3-easy" + "-template";
+
     public static string Path(params string[] parts)
     {
         var all = new string[parts.Length + 1];

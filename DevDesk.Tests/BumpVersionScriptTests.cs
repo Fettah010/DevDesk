@@ -1,6 +1,5 @@
 using System;
-using System.ComponentModel;
-using System.Diagnostics;
+using System.Collections.Generic;
 using System.IO;
 using System.Xml.Linq;
 using Xunit;
@@ -73,39 +72,18 @@ public class BumpVersionScriptTests
 
     private static int Run(string projectFile, string version, string? suffix = null)
     {
-        var shell = PowerShell.FindShell();
-        if (shell is null)
+        var arguments = new List<string>
         {
-            return 0; // no PowerShell on this machine: skip (the test still reports green)
-        }
-
-        var psi = new ProcessStartInfo(shell)
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
+            "-Version", version,
+            "-Project", projectFile,
         };
-        psi.ArgumentList.Add("-NoProfile");
-        psi.ArgumentList.Add("-ExecutionPolicy");
-        psi.ArgumentList.Add("Bypass");
-        psi.ArgumentList.Add("-File");
-        psi.ArgumentList.Add(ScriptPath);
-        psi.ArgumentList.Add("-Version");
-        psi.ArgumentList.Add(version);
-        psi.ArgumentList.Add("-Project");
-        psi.ArgumentList.Add(projectFile);
         if (suffix is not null)
         {
-            psi.ArgumentList.Add("-Suffix");
-            psi.ArgumentList.Add(suffix);
+            arguments.Add("-Suffix");
+            arguments.Add(suffix);
         }
 
-        using var process = Process.Start(psi)!;
-        process.StandardOutput.ReadToEnd();
-        process.StandardError.ReadToEnd();
-        process.WaitForExit();
-        return process.ExitCode;
+        return PowerShellRunner.Run(ScriptPath, arguments.ToArray())?.ExitCode ?? 0;
     }
 
     private sealed class TempProject : IDisposable
@@ -150,44 +128,6 @@ public class BumpVersionScriptTests
             {
                 // best-effort temp cleanup
             }
-        }
-    }
-
-    private static class PowerShell
-    {
-        public static string? FindShell()
-        {
-            var bundled = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.System),
-                "WindowsPowerShell", "v1.0", "powershell.exe");
-            if (System.IO.File.Exists(bundled))
-            {
-                return bundled;
-            }
-
-            foreach (var candidate in new[] { "pwsh.exe", "powershell.exe" })
-            {
-                try
-                {
-                    using var probe = Process.Start(new ProcessStartInfo(candidate, "-NoProfile -Command \"exit 0\"")
-                    {
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                    });
-                    if (probe is not null && probe.WaitForExit(5000) && probe.ExitCode == 0)
-                    {
-                        return candidate;
-                    }
-                }
-                catch (Win32Exception)
-                {
-                    // not on PATH
-                }
-            }
-
-            return null;
         }
     }
 }
