@@ -1,67 +1,181 @@
 using System;
 using System.IO;
-using System.Text.Json;
+using System.Text.Json.Nodes;
+using DevDesk.Models;
 
 namespace DevDesk.Services;
 
+public enum SettingsLoadStatus
+{
+    Missing,
+    Loaded,
+    Migrated,
+    Corrupt,
+}
+
+/// <summary>What happened when the settings file was read, for the UI to report.</summary>
+public sealed record SettingsLoadResult(SettingsLoadStatus Status, string? BackupPath = null, string? Warning = null)
+{
+    public bool HasWarning => !string.IsNullOrWhiteSpace(Warning);
+}
+
 /// <summary>
-/// Small JSON-backed settings store (%LocalAppData%\DevDesk\settings.json).
-/// Only the theme is persisted today; scan roots, ignore patterns and the
-/// token come in later phases. Writing is best-effort (never throws).
+/// JSON-backed settings (%LocalAppData%\DevDesk\settings.json, schema 1).
+/// <para>
+/// Reading never throws and never loses a file: a corrupt document is backed up
+/// and replaced by defaults. Writing is atomic and preserves keys this build does
+/// not know about (see <see cref="JsonStore"/> and
+/// <see cref="SettingsProjection"/>).
+/// </para>
+/// <para>
+/// The data directory is injectable (<c>DEVDESK_DATA_DIR</c> or the constructor)
+/// so tests never touch the real profile.
+/// </para>
 /// </summary>
 public sealed class SettingsService
 {
+    public const string DataDirectoryVariable = "DEVDESK_DATA_DIR";
+
     public static SettingsService Current { get; } = new();
 
-    private static string SettingsDir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DevDesk");
+    private readonly JsonStore _store;
+    private readonly object _gate = new();
 
-    private static string SettingsPath => Path.Combine(SettingsDir, "settings.json");
+    private JsonObject _raw = new();
+    private AppSettings _settings = new();
 
-    private AppTheme _theme = AppTheme.System;
+    public SettingsService(string? dataDirectory = null)
+    {
+        var directory = string.IsNullOrWhiteSpace(dataDirectory) ? ResolveDataDirectory() : dataDirectory;
+        _store = new JsonStore(Path.Combine(directory, "settings.json"));
+        LastLoad = Load();
+    }
+
+    public AppSettings Settings => _settings;
+
+    public SettingsLoadResult LastLoad { get; private set; } = new(SettingsLoadStatus.Missing);
+
+    public string SettingsPath => _store.Path;
 
     public AppTheme Theme
     {
-        get => _theme;
+        get => Enum.TryParse<AppTheme>(_settings.Theme, ignoreCase: true, out var theme) ? theme : AppTheme.System;
         set
         {
-            _theme = value;
+            _settings.Theme = value.ToString();
             Save();
         }
     }
 
-    private SettingsService() => Load();
-
-    private void Load()
+    /// <summary>Update channel. An unknown value falls back to the default rather than crashing.</summary>
+    public string Channel
     {
-        try
+        get => _settings.Channel;
+        set
         {
-            if (!File.Exists(SettingsPath))
-                return;
-
-            using var doc = JsonDocument.Parse(File.ReadAllText(SettingsPath));
-            if (doc.RootElement.TryGetProperty("theme", out var t) &&
-                Enum.TryParse<AppTheme>(t.GetString(), out var parsed))
-            {
-                _theme = parsed;
-            }
-        }
-        catch (Exception ex)
-        {
-            LoggingService.Log.Error(ex, "Failed to load settings - using defaults");
+            _settings.Channel = ReleaseChannels.IsKnown(value) ? value : ReleaseChannels.Default;
+            Save();
         }
     }
 
-    private void Save()
+    /// <summary>Writes the current settings. Never throws: a failed save is logged.</summary>
+    public void Save()
     {
-        try
+        lock (_gate)
         {
-            Directory.CreateDirectory(SettingsDir);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(new { theme = _theme.ToString() }));
+            try
+            {
+                _raw = SettingsProjection.Merge(_settings, _raw);
+                _store.Save(_raw);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.Log.Error(ex, "Failed to save settings to {Path}", _store.Path);
+            }
         }
-        catch (Exception ex)
+    }
+
+    public static string ResolveDataDirectory()
+    {
+        var overridden = Environment.GetEnvironmentVariable(DataDirectoryVariable);
+        if (!string.IsNullOrWhiteSpace(overridden))
         {
-            LoggingService.Log.Error(ex, "Failed to save settings");
+            return overridden;
+        }
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "DevDesk");
+    }
+
+    private SettingsLoadResult Load()
+    {
+        var result = _store.Load();
+
+        if (result.Corrupt)
+        {
+            _raw = new JsonObject();
+            _settings = new AppSettings();
+
+            var warning = result.BackupPath is null
+                ? "The settings file could not be read and was reset to defaults."
+                : $"The settings file could not be read and was reset to defaults. A copy is kept at {result.BackupPath}.";
+
+            LoggingService.Log.Warning("Settings file was corrupt ({Error}); defaults restored", result.Error);
+            return new SettingsLoadResult(SettingsLoadStatus.Corrupt, result.BackupPath, warning);
+        }
+
+        if (result.Root is null)
+        {
+            if (!string.IsNullOrWhiteSpace(result.Error))
+            {
+                LoggingService.Log.Warning("Settings could not be read ({Error}); defaults in use", result.Error);
+            }
+
+            _raw = new JsonObject();
+            _settings = new AppSettings();
+            return new SettingsLoadResult(SettingsLoadStatus.Missing);
+        }
+
+        _raw = SettingsMigration.Upgrade(result.Root, out var migrated);
+        _settings = SettingsProjection.Read(_raw);
+        Normalize(_settings);
+
+        return migrated
+            ? new SettingsLoadResult(SettingsLoadStatus.Migrated)
+            : new SettingsLoadResult(SettingsLoadStatus.Loaded);
+    }
+
+    /// <summary>Keeps hand-edited values inside the ranges the rest of the app assumes.</summary>
+    private static void Normalize(AppSettings settings)
+    {
+        if (!ReleaseChannels.IsKnown(settings.Channel))
+        {
+            LoggingService.Log.Warning(
+                "Unknown update channel {Channel} in settings; using {Default}",
+                settings.Channel, ReleaseChannels.Default);
+            settings.Channel = ReleaseChannels.Default;
+        }
+
+        if (!ReleaseChannels.IsKnown(settings.DefaultReleaseChannel))
+        {
+            settings.DefaultReleaseChannel = ReleaseChannels.Default;
+        }
+
+        settings.Theme = Enum.TryParse<AppTheme>(settings.Theme, ignoreCase: true, out var theme)
+            ? theme.ToString()
+            : nameof(AppTheme.System);
+
+        if (settings.Roots.Count == 0)
+        {
+            settings.Roots.Add(new ScanRootSettings());
+        }
+
+        var root = settings.Roots[0];
+        root.Depth = Math.Clamp(root.Depth, 1, 8);
+        if (string.IsNullOrWhiteSpace(root.Path))
+        {
+            root.Path = ScanEngine.DefaultScanRoot;
         }
     }
 }

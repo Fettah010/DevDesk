@@ -58,10 +58,10 @@
 
                 <ctk:SettingsCard
                     Header="Scan roots"
-                    Description="Nested git repos and solutions are detected automatically (max depth 3). Hidden and build folders are ignored.">
+                    Description="Nested git repos and solutions are detected automatically. Hidden and build folders are ignored. The root is recorded in settings.json and becomes editable in 0.7.0.">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock x:Name="ScanRootsText" Text="C:\Code\projects" FontSize="12" VerticalAlignment="Center"/>
-                        <Button x:Name="AddRootButton" CornerRadius="8" Click="AddRootButton_Click" ToolTipService.ToolTip="Add path (Phase 1)">
+                        <TextBlock x:Name="ScanRootsText" FontSize="12" VerticalAlignment="Center"/>
+                        <Button x:Name="AddRootButton" CornerRadius="8" Click="AddRootButton_Click" ToolTipService.ToolTip="Add a second root (0.7.0)">
                             <FontIcon Glyph="&#xE710;" FontSize="14"/>
                         </Button>
                     </StackPanel>
@@ -69,11 +69,13 @@
 
                 <ctk:SettingsCard
                     Header="Ignore patterns"
-                    Description="Default ignore list skips build output and tool folders.">
+                    Description="Folders that are never walked. This build uses a fixed list; a user-editable list arrives in 0.7.0.">
                     <TextBlock
-                        Text="bin · obj · node_modules · .vs · Releases · Logs"
+                        x:Name="IgnoresText"
                         Style="{ThemeResource CaptionTextBlockStyle}"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap"
+                        MaxWidth="420"
                         VerticalAlignment="Center"/>
                 </ctk:SettingsCard>
 
@@ -94,12 +96,13 @@
                 </ctk:SettingsCard>
 
                 <ctk:SettingsCard
-                    Header="Branch → channel"
-                    Description="Map git branches to Velopack feeds for one-click releases.">
-                    <StackPanel Spacing="2" VerticalAlignment="Center">
-                        <TextBlock Text="main → stable (release branch)" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Text="develop → beta" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                    </StackPanel>
+                    Header="Update channel"
+                    Description="Which release feed the app updates from. A tag decides the channel of a release: v1.2.3 is stable, v1.2.3-beta is beta, v1.2.3-dev is dev.">
+                    <ctk:Segmented x:Name="ChannelSegment" SelectionChanged="ChannelSegment_SelectionChanged" SelectedIndex="1">
+                        <ctk:SegmentedItem Content="stable"/>
+                        <ctk:SegmentedItem Content="beta"/>
+                        <ctk:SegmentedItem Content="dev"/>
+                    </ctk:Segmented>
                 </ctk:SettingsCard>
 
                 <TextBlock
