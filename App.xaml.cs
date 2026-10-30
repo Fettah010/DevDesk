@@ -31,6 +31,11 @@ public partial class App : Application
         m_window = new MainWindow();
         m_window.Activate();
 
+        // A second launch is redirected to this instance by SingleInstance; its
+        // handler runs off the UI thread, so hop back before touching the window.
+        SingleInstance.WatchForActivations(() =>
+            m_window?.DispatcherQueue.TryEnqueue(() => m_window.BringToFront()));
+
         // Fire-and-forget: the update check runs off the UI thread after the
         // window is up, so startup is never blocked by the network.
         _ = CheckForUpdatesAsync();
@@ -102,5 +107,5 @@ public partial class App : Application
         }
     }
 
-    private Window? m_window;
+    private MainWindow? m_window;
 }

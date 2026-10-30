@@ -153,6 +153,25 @@ public class SettingsServiceTests
     }
 
     [Fact]
+    public void Settings_RestoresTheLastRouteAndRefusesAnUnknownOne()
+    {
+        using var sandbox = new SettingsSandbox();
+        sandbox.WriteFile("""{ "schemaVersion": 1, "lastRoute": "projects" }""");
+
+        var service = sandbox.NewService();
+        Assert.Equal(Routes.Projects, service.LastRoute);
+
+        // A route this build does not have (an old or a newer one) is not stored.
+        service.LastRoute = "activity";
+        Assert.Equal(Routes.Dashboard, service.LastRoute);
+        Assert.Equal("dashboard", sandbox.ReadJson()["lastRoute"]!.GetValue<string>());
+
+        service.LastRoute = Routes.Diagnostics;
+        Assert.Equal("diagnostics", sandbox.ReadJson()["lastRoute"]!.GetValue<string>());
+        Assert.Equal(Routes.Diagnostics, sandbox.NewService().LastRoute);
+    }
+
+    [Fact]
     public void Settings_DefaultsDescribeTheRealScanRoot()
     {
         using var sandbox = new SettingsSandbox();

@@ -78,6 +78,27 @@ public sealed class SettingsService
         }
     }
 
+    /// <summary>
+    /// The destination to reopen on the next launch. Unknown tags (a hand edit, or a
+    /// route from a newer build) fall back to the Dashboard rather than opening
+    /// nothing, and a write only happens when the route really changed.
+    /// </summary>
+    public string LastRoute
+    {
+        get => Routes.Normalize(_settings.LastRoute);
+        set
+        {
+            var route = Routes.Normalize(value);
+            if (_settings.LastRoute == route)
+            {
+                return;
+            }
+
+            _settings.LastRoute = route;
+            Save();
+        }
+    }
+
     /// <summary>Writes the current settings. Never throws: a failed save is logged.</summary>
     public void Save()
     {

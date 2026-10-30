@@ -12,6 +12,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Spacing="2">
@@ -117,17 +118,30 @@
                     Description="DevDesk auto-updates via Velopack after it is installed (setup.exe).">
                     <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                         <TextBlock x:Name="VersionText" Style="{ThemeResource BodyTextBlockStyle}" FontWeight="SemiBold"/>
-                        <Button x:Name="CheckUpdatesButton" Content="Check for updates" CornerRadius="8" Click="CheckUpdatesButton_Click"/>
+                        <Button
+                            x:Name="CheckUpdatesButton"
+                            Content="Check for updates"
+                            CornerRadius="8"
+                            Click="CheckUpdatesButton_Click"/>
+                        <ProgressRing
+                            x:Name="UpdateSpinner"
+                            Width="18"
+                            Height="18"
+                            IsActive="False"
+                            Visibility="Collapsed"/>
                     </StackPanel>
                 </ctk:SettingsCard>
 
-                <InfoBar
-                    x:Name="SettingsInfoBar"
-                    Margin="0,8,0,0"
-                    Severity="Informational"
-                    IsOpen="False"
-                    IsClosable="True"/>
             </StackPanel>
         </ScrollViewer>
+
+        <!-- Outside the scroller on purpose: an answer that opens below the fold
+             is an answer the user never sees. -->
+        <InfoBar
+            Grid.Row="2"
+            x:Name="SettingsInfoBar"
+            Severity="Informational"
+            IsOpen="False"
+            IsClosable="True"/>
     </Grid>
 </Page>

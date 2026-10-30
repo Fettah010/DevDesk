@@ -76,7 +76,7 @@ public sealed partial class SettingsPage : Page
 
     // The channel is persisted in settings and handed to the updater, which
     // rebuilds its Velopack manager against the new feed on the next check.
-    private void ChannelSegment_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void ChannelSegment_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initialising)
         {
@@ -90,10 +90,18 @@ public sealed partial class SettingsPage : Page
             _ => ReleaseChannels.Beta
         };
 
-        SettingsService.Current.Channel = channel;
-        UpdateService.Current.Channel = channel;
-
-        ShowInfoBar($"Update channel set to {channel}.", InfoBarSeverity.Success);
+        // async void: nothing above can throw except the settings write, which
+        // would otherwise be an unhandled exception on the UI thread.
+        try
+        {
+            await UpdateService.Current.SetChannelAsync(channel);
+            ShowInfoBar($"Update channel set to {channel}.", InfoBarSeverity.Success);
+        }
+        catch (Exception ex)
+        {
+            LoggingService.Log.Error(ex, "Switching the update channel to {Channel} failed", channel);
+            ShowInfoBar($"The channel could not be saved: {ex.Message}", InfoBarSeverity.Error);
+        }
     }
 
     private void SaveTokenButton_Click(object sender, RoutedEventArgs e) => ShowInfoBar(
@@ -102,8 +110,39 @@ public sealed partial class SettingsPage : Page
     private void AddRootButton_Click(object sender, RoutedEventArgs e) => ShowInfoBar(
         "Multiple scan roots land in 0.7.0. The single root is editable in settings.json.");
 
-    private void CheckUpdatesButton_Click(object sender, RoutedEventArgs e) => ShowInfoBar(
-        $"Auto-update runs silently at startup (Velopack) from the {UpdateService.Current.Channel} feed.");
+    // The one Settings action that is real today: it asks the updater and reports
+    // what actually came back, including "not installed" from the build output.
+    private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdatesButton.IsEnabled = false;
+        UpdateSpinner.IsActive = true;
+        UpdateSpinner.Visibility = Visibility.Visible;
+
+        try
+        {
+            var result = await UpdateService.Current.CheckAsync();
+
+            ShowInfoBar(
+                result.Message,
+                result.Status switch
+                {
+                    UpdateCheckStatus.UpToDate => InfoBarSeverity.Success,
+                    UpdateCheckStatus.Failed => InfoBarSeverity.Error,
+                    _ => InfoBarSeverity.Informational
+                });
+        }
+        catch (Exception ex)
+        {
+            LoggingService.Log.Error(ex, "The update check threw");
+            ShowInfoBar($"The update check failed: {ex.Message}", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            UpdateSpinner.IsActive = false;
+            UpdateSpinner.Visibility = Visibility.Collapsed;
+            CheckUpdatesButton.IsEnabled = true;
+        }
+    }
 
     private void ShowInfoBar(string message, InfoBarSeverity severity = InfoBarSeverity.Informational)
     {

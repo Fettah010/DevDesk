@@ -36,6 +36,13 @@ public static class Program
                 .OnRestarted(_ => LoggingService.Log.Information("Restarted after update"))
                 .Run();
 
+            // Before any window exists: a second double-click hands its activation
+            // to the running instance and this process exits quietly.
+            if (SingleInstance.TryRedirectToRunningInstance())
+            {
+                return;
+            }
+
             Run(args);
         }
         catch (Exception ex)

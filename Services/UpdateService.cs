@@ -6,6 +6,21 @@ using Velopack.Sources;
 
 namespace DevDesk.Services;
 
+/// <summary>Outcome of an update check, in words a user can act on.</summary>
+public enum UpdateCheckStatus
+{
+    NotInstalled,
+    UpToDate,
+    Available,
+    Failed,
+}
+
+/// <summary>What one check found, plus the sentence the Settings page shows.</summary>
+public sealed record UpdateCheckResult(UpdateCheckStatus Status, string Message, UpdateInfo? Update = null)
+{
+    public bool HasUpdate => Status == UpdateCheckStatus.Available && Update is not null;
+}
+
 /// <summary>
 /// Thin wrapper around the Velopack <see cref="UpdateManager"/> so pages stay
 /// simple and the update source is chosen in exactly one place.
@@ -14,6 +29,13 @@ namespace DevDesk.Services;
 /// (<see cref="AppInfo.RepositoryUrl"/>), never a hardcoded URL: moving the
 /// repo moves the feed. The channel comes from <see cref="ReleaseChannels"/>,
 /// so the updater cannot drift from the tag parser.
+/// </para>
+/// <para>
+/// Nothing here blocks: every entry point is asynchronous, and the manager is
+/// built lazily under a lock that guards only object construction (no I/O, no
+/// network, no file access). A synchronous <c>Wait()</c> on the UI thread would
+/// deadlock against the WinUI dispatcher, so there is none — see
+/// <c>UpdateService_DoesNotBlockSynchronously</c>.
 /// </para>
 /// </summary>
 public sealed class UpdateService
@@ -101,6 +123,79 @@ public sealed class UpdateService
         }
     }
 
+    /// <summary>
+    /// Switches channel and persists the choice. The settings write is a file
+    /// operation, so it happens off the UI thread.
+    /// </summary>
+    public async Task SetChannelAsync(string channel, CancellationToken cancellationToken = default)
+    {
+        Channel = channel; // normalises and rebuilds the manager
+
+        var persisted = Channel;
+        await Task.Run(() => AppServices.Settings.Channel = persisted, cancellationToken)
+            .ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// One update check, reported as a sentence. Never throws: a failure is a
+    /// result the caller can show, because "check for updates" must not crash.
+    /// </summary>
+    public async Task<UpdateCheckResult> CheckAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsInstalled)
+        {
+            LoggingService.Log.Information("Update check skipped: app is not installed");
+            return new UpdateCheckResult(UpdateCheckStatus.NotInstalled, NotInstalledMessage);
+        }
+
+        try
+        {
+            var update = await Manager.CheckForUpdatesAsync()
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(true);
+
+            if (update is null)
+            {
+                LoggingService.Log.Information("Update check: already on the latest version");
+                return new UpdateCheckResult(UpdateCheckStatus.UpToDate, NoUpdateMessage);
+            }
+
+            var version = update.TargetFullRelease.Version.ToString();
+            LoggingService.Log.Information("Update check: v{Version} is available", version);
+
+            return new UpdateCheckResult(
+                UpdateCheckStatus.Available,
+                $"Version {version} is available on the {Channel} feed.",
+                update);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LoggingService.Log.Error(ex, "Update check failed");
+            return new UpdateCheckResult(
+                UpdateCheckStatus.Failed,
+                $"The update check failed: {ex.Message}");
+        }
+    }
+
+    public Task<UpdateInfo?> CheckForUpdatesAsync() => Manager.CheckForUpdatesAsync();
+
+    public Task DownloadUpdatesAsync(UpdateInfo update, Action<int>? progress = null) =>
+        Manager.DownloadUpdatesAsync(update, progress, CancellationToken.None);
+
+    /// <summary>
+    /// Applies the update and restarts the app. WinUI apps must terminate the
+    /// current process so the updater can swap files safely.
+    /// </summary>
+    public void ApplyUpdatesAndRestart(UpdateInfo update)
+    {
+        Manager.ApplyUpdatesAndRestart(update);
+        Environment.Exit(0);
+    }
+
     private UpdateManager Manager
     {
         get
@@ -145,19 +240,4 @@ public sealed class UpdateService
 
     private static string ResolveToken() =>
         Environment.GetEnvironmentVariable("GITHUB_TOKEN") ?? string.Empty;
-
-    public Task<UpdateInfo?> CheckForUpdatesAsync() => Manager.CheckForUpdatesAsync();
-
-    public Task DownloadUpdatesAsync(UpdateInfo update, Action<int>? progress = null) =>
-        Manager.DownloadUpdatesAsync(update, progress, CancellationToken.None);
-
-    /// <summary>
-    /// Applies the update and restarts the app. WinUI apps must terminate the
-    /// current process so the updater can swap files safely.
-    /// </summary>
-    public void ApplyUpdatesAndRestart(UpdateInfo update)
-    {
-        Manager.ApplyUpdatesAndRestart(update);
-        Environment.Exit(0);
-    }
 }
