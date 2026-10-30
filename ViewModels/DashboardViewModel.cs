@@ -45,6 +45,11 @@ public sealed partial class DashboardViewModel : ViewModelBase
     [ObservableProperty]
     public partial string ScanPathText { get; set; }
 
+    [ObservableProperty]
+    public partial string BusyText { get; set; }
+
+    private readonly IProgress<ScanProgress> _progress;
+
     public DashboardViewModel(ProjectCatalog catalog)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -58,6 +63,12 @@ public sealed partial class DashboardViewModel : ViewModelBase
         LastRefreshText = "Not scanned yet";
         ProjectsPillText = "0 in DevEcosystem";
         ScanPathText = $"Scanning {_catalog.ScanRoot} · depth {ScanEngine.DefaultMaxDepth} · excludes DevDesk";
+        BusyText = "Looking for projects…";
+
+        // Progress<T> captures the context it is created on: created here (UI
+        // thread), its callbacks land back on the UI thread, so the view model
+        // never touches a bound property from a scan thread.
+        _progress = new Progress<ScanProgress>(OnProgress);
     }
 
     public bool HasProjects => Projects.Count > 0;
@@ -73,7 +84,7 @@ public sealed partial class DashboardViewModel : ViewModelBase
     private Task LoadAsync(CancellationToken cancellationToken) =>
         RunBusyAsync(async () =>
         {
-            Apply(await _catalog.GetOrRefreshAsync(cancellationToken));
+            Apply(await _catalog.GetOrRefreshAsync(cancellationToken, _progress));
         });
 
     /// <summary>The Refresh button and the error bar's Retry button.</summary>
@@ -81,8 +92,15 @@ public sealed partial class DashboardViewModel : ViewModelBase
     private Task RefreshAsync(CancellationToken cancellationToken) =>
         RunBusyAsync(async () =>
         {
-            Apply(await _catalog.RefreshAsync(cancellationToken));
+            Apply(await _catalog.RefreshAsync(cancellationToken, _progress));
         });
+
+    private void OnProgress(ScanProgress progress)
+    {
+        BusyText = progress.Total <= 0
+            ? $"Looking for projects… {progress.CurrentName}"
+            : $"Scanning {progress.Completed} of {progress.Total} · {progress.CurrentName}";
+    }
 
     private void Apply(CatalogSnapshot snapshot)
     {

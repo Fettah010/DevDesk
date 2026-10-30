@@ -249,15 +249,6 @@ public class ScanEngineBaselineTests : IDisposable
         Assert.Contains(result.Projects, p => p.Name == "DevTem Win UI 3" || p.Name == "DevTem WinUI 3");
     }
 
-    [Fact]
-    public async Task GitRunner_ReportsVersion()
-    {
-        var result = await GitRunner.RunAsync(_tmp.Path, "--version");
-
-        Assert.Equal(0, result.ExitCode);
-        Assert.Contains("git version", result.StdOut);
-    }
-
     private Task<ScannerResult> Scan(string root, string selfPath) =>
         new ScanEngine(root, selfPath).ScanAsync();
 

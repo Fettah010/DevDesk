@@ -334,7 +334,7 @@
                 <ProgressRing x:Name="BusyRing" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="36" Height="36"/>
                 <TextBlock
                     x:Name="BusyText"
-                    Text="Scanning the DevEcosystem folder…"
+                    Text="{x:Bind ViewModel.BusyText, Mode=OneWay}"
                     Style="{ThemeResource BodyTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>

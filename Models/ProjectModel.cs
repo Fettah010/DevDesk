@@ -49,7 +49,11 @@ public sealed class ProjectModel
     public required string Branch { get; init; }
     public required string Version { get; init; }
     public bool VersionMismatch { get; init; }
-    public string VersionDisplay => $"v{Version}";
+
+    /// <summary>A missing version is "no version", never the literal "v—".</summary>
+    public bool HasVersion => !string.IsNullOrWhiteSpace(Version) && Version != "—";
+
+    public string VersionDisplay => HasVersion ? $"v{Version}" : "no version";
 
     public bool HasRemote { get; init; } = true;
     public bool RemoteOk { get; init; } = true;

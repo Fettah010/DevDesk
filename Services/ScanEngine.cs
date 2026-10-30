@@ -30,6 +30,15 @@ public interface IScanEngine
         IProgress<ScanProgress>? progress = null);
 }
 
+/// <summary>What <c>git status --porcelain=v2 --branch</c> told us.</summary>
+public readonly record struct StatusInfo(
+    string Branch,
+    bool Detached,
+    bool Unborn,
+    int Ahead,
+    int Behind,
+    bool Dirty);
+
 /// <summary>
 /// Walks <see cref="DefaultScanRoot"/> (the DevEcosystem folder), finds git
 /// repos / project-marked folders, and reads read-only git state + csproj
@@ -37,34 +46,31 @@ public interface IScanEngine
 ///
 ///  * Scan root = DevEcosystem, depth 2.
 ///  * DevDesk itself is never a scanned project — it becomes the self
-///    workspace (<see cref="ScannerResult.Self"/>).
+///    workspace (<see cref="ScannerResult.Self"/>), located by
+///    <see cref="SelfLocator"/>, never by folder name.
 ///  * Stop descending once a repo is found (its contents are not more projects).
-///  * Hygiene: skip bin/obj/.git/.vs/node_modules/Releases/Logs/….
-///  * Local-only: no network calls, no writes — a broken git never crashes a scan.
-///
-/// W-0.1.5 moved this here verbatim from <c>ProjectScanner</c>; the correctness
-/// work (`.git` files, self discovery, determinism, porcelain v2) is W-0.1.6.
+///  * Hygiene: <see cref="PathHygiene"/> decides what is skipped.
+///  * Local-only: no network calls, no writes (no locks either), a broken git
+///    never crashes a scan, and a cancelled scan stops promptly.
 /// </summary>
 public sealed class ScanEngine : IScanEngine
 {
     public const string DefaultScanRoot = @"C:\Code\projects\DevEcosystem";
     public const int DefaultMaxDepth = 2;
 
-    private const string SelfRepoName = "DevDesk";
     private const int CommitCount = 3;
+    private const int MaxMarkerSearchDepth = 4;
+    private const int MaxMarkerFiles = 200;
+
+    /// <summary>Global git options on every call: no pager, no colour, no escaping, no locks.</summary>
+    private static readonly string[] GitPrelude =
+    {
+        "--no-pager", "-c", "color.ui=false", "-c", "core.quotepath=false", "--no-optional-locks",
+    };
 
     private static readonly Regex VersionTagRegex = new(
         "<(Version|AssemblyVersion|FileVersion)>\\s*(?<value>[^<]+?)\\s*</\\1>",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-    private static readonly Regex BehindRegex = new("behind\\s+(\\d+)", RegexOptions.Compiled);
-    private static readonly Regex NoCommitsRegex = new("^##\\s+No commits yet", RegexOptions.Compiled);
-
-    private static readonly string[] IgnoredNames =
-    {
-        "bin", "obj", ".vs", ".vscode", ".git", "node_modules", "packages",
-        "Releases", "ReleasesLocal", "Logs", "dist", "build", "_ReSharper",
-    };
 
     private static readonly string[] MarkerExtensions =
     {
@@ -72,136 +78,177 @@ public sealed class ScanEngine : IScanEngine
     };
 
     private readonly string _root;
-    private readonly string _selfPath;
+    private readonly string? _selfPath;
     private readonly int _maxDepth;
+    private readonly int _maxParallelism;
 
-    public ScanEngine(string? root = null, string? selfPath = null, int maxDepth = DefaultMaxDepth)
+    /// <param name="root">Folder to walk; defaults to <see cref="DefaultScanRoot"/>.</param>
+    /// <param name="selfPath">
+    /// Explicit self checkout (tests). When null the checkout is discovered from
+    /// the running executable, so a renamed or moved repo still works and an
+    /// installed build reports no self at all.
+    /// </param>
+    /// <param name="maxDepth">How deep a candidate may sit below the root.</param>
+    /// <param name="maxParallelism">Repos read at once; defaults to min(4, CPUs).</param>
+    public ScanEngine(
+        string? root = null,
+        string? selfPath = null,
+        int maxDepth = DefaultMaxDepth,
+        int? maxParallelism = null)
     {
         _root = root ?? DefaultScanRoot;
-        _selfPath = (selfPath ?? Path.Combine(_root, SelfRepoName)).TrimEnd('\\', '/');
+        _selfPath = NormalizeSelf(selfPath ?? SelfLocator.FindSourceRepo(AppContext.BaseDirectory));
         _maxDepth = Math.Max(1, maxDepth);
+        _maxParallelism = Math.Max(1, maxParallelism ?? Math.Min(4, Environment.ProcessorCount));
     }
 
     public string ScanRoot => _root;
 
-    public string SelfPath => _selfPath;
+    public string? SelfPath => _selfPath;
 
     public async Task<ScannerResult> ScanAsync(
         CancellationToken cancellationToken = default,
         IProgress<ScanProgress>? progress = null)
     {
-        var projects = new List<ProjectModel>();
-
+        var candidates = new List<string>();
         if (Directory.Exists(_root))
         {
-            await WalkAsync(_root, 1, projects, cancellationToken, progress).ConfigureAwait(false);
+            Collect(_root, 1, candidates, cancellationToken, progress);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var self = Directory.Exists(_selfPath) && IsRepositoryRoot(_selfPath)
-            ? await BuildModelAsync(_selfPath, forceWorkspace: true, cancellationToken).ConfigureAwait(false)
-            : (ProjectModel?)null;
+        // The self checkout is read alongside the others: it is three git calls
+        // that would otherwise sit on the critical path.
+        var selfTask = _selfPath is not null && PathHygiene.IsRepositoryRoot(_selfPath)
+            ? BuildModelAsync(_selfPath, forceWorkspace: true, cancellationToken)
+            : Task.FromResult<ProjectModel?>(null);
 
+        var models = new ProjectModel?[candidates.Count];
+        var completed = 0;
+
+        var options = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = _maxParallelism,
+            CancellationToken = cancellationToken,
+        };
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, candidates.Count),
+            options,
+            async (index, token) =>
+            {
+                var model = await BuildModelAsync(candidates[index], forceWorkspace: false, token)
+                    .ConfigureAwait(false);
+
+                models[index] = model;
+                var done = Interlocked.Increment(ref completed);
+                progress?.Report(new ScanProgress(
+                    done,
+                    candidates.Count,
+                    model?.Name ?? Path.GetFileName(candidates[index])));
+            }).ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var self = await selfTask.ConfigureAwait(false);
+
+        // The array is indexed by candidate order, so the result is stable even
+        // though the repos are read concurrently.
+        var projects = models.Where(m => m is not null).Select(m => m!).ToList();
         return new ScannerResult { Self = self, Projects = projects };
     }
 
-    private async Task WalkAsync(
-        string dir,
+    /// <summary>
+    /// Collects candidate folders without reading any git state. Discovery is
+    /// ordered, so the same disk always produces the same card order.
+    /// </summary>
+    private void Collect(
+        string directory,
         int depth,
-        List<ProjectModel> projects,
+        List<string> candidates,
         CancellationToken cancellationToken,
         IProgress<ScanProgress>? progress)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        string[] children;
-        try
-        {
-            children = Directory.GetDirectories(dir);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return;
-        }
-
-        foreach (var child in children.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        foreach (var child in PathHygiene.SafeEnumerateDirectories(directory))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var name = Path.GetFileName(child);
-            if (name is null || IsIgnored(name) || name.Length > 0 && name[0] == '.')
+            if (PathHygiene.IsIgnoredFolderName(name) || PathHygiene.IsReparsePoint(child) || IsSelf(child))
             {
                 continue;
             }
 
-            if (IsSelfPath(child))
+            if (PathHygiene.IsRepositoryRoot(child) || HasProjectMarker(child))
             {
+                candidates.Add(child);
+                progress?.Report(new ScanProgress(0, 0, name));
                 continue;
             }
 
-            if (IsRepositoryRoot(child) || HasProjectMarker(child))
+            if (depth < _maxDepth)
             {
-                var model = await BuildModelAsync(child, forceWorkspace: false, cancellationToken).ConfigureAwait(false);
-                if (model is not null)
-                {
-                    projects.Add(model);
-                    progress?.Report(new ScanProgress(projects.Count, 0, model.Name));
-                }
-            }
-            else if (depth < _maxDepth)
-            {
-                await WalkAsync(child, depth + 1, projects, cancellationToken, progress).ConfigureAwait(false);
+                Collect(child, depth + 1, candidates, cancellationToken, progress);
             }
         }
     }
 
-    private static bool IsIgnored(string name) => IgnoredNames.Contains(name, StringComparer.OrdinalIgnoreCase);
+    private static string? NormalizeSelf(string? path) =>
+        string.IsNullOrWhiteSpace(path) ? null : PathHygiene.Canonicalize(path);
 
-    private bool IsSelfPath(string path) =>
-        string.Equals(path.TrimEnd('\\', '/'), _selfPath, StringComparison.OrdinalIgnoreCase);
+    private bool IsSelf(string path) =>
+        _selfPath is not null
+        && string.Equals(PathHygiene.Canonicalize(path), _selfPath, StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsRepositoryRoot(string dir) => Directory.Exists(Path.Combine(dir, ".git"));
+    private static bool HasProjectMarker(string directory) =>
+        PathHygiene.SafeEnumerateFiles(directory).Any(IsMarker);
 
-    private static bool HasProjectMarker(string dir)
-    {
-        string[] files;
-        try
-        {
-            files = Directory.GetFiles(dir);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-
-        return files.Any(f => MarkerExtensions.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)));
-    }
+    private static bool IsMarker(string file) =>
+        MarkerExtensions.Any(ext => file.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
 
     private async Task<ProjectModel?> BuildModelAsync(
         string repoPath,
         bool forceWorkspace,
         CancellationToken cancellationToken)
     {
-        var name = Path.GetFileName(repoPath.TrimEnd('\\', '/'));
+        var name = Path.GetFileName(repoPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         if (string.IsNullOrEmpty(name))
         {
             return null;
         }
 
-        var status = await GitRunner.RunAsync(repoPath, "status", "--porcelain", "--branch").ConfigureAwait(false);
-        var remoteVerbose = await GitRunner.RunAsync(repoPath, "remote", "--verbose").ConfigureAwait(false);
-        var log = status.ExitCode == 0
-            ? await GitRunner.RunAsync(repoPath, "log", $"-{CommitCount}", "--pretty=format:%h%x09%s%x09%an%x09%ar").ConfigureAwait(false)
-            : status;
+        var isGit = PathHygiene.IsRepositoryRoot(repoPath);
+        var status = new GitResult(-1, string.Empty, string.Empty);
+        var remotes = new GitResult(-1, string.Empty, string.Empty);
+        var log = new GitResult(-1, string.Empty, string.Empty);
 
-        cancellationToken.ThrowIfCancellationRequested();
+        if (isGit)
+        {
+            status = await GitAsync(repoPath, cancellationToken,
+                "status", "--porcelain=v2", "--branch", "--untracked-files=normal").ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
 
-        var (branch, dirty, behind) = await ParseStatusAsync(status, repoPath).ConfigureAwait(false);
-        var (hasRemote, remoteOk, remoteHost) = ParseRemotes(remoteVerbose.StdOut);
-        var commits = ParseCommits(log.StdOut);
-        var (version, versionMismatch) = ReadVersion(repoPath);
-        var isWorkspace = forceWorkspace || CountSubfolderProjects(repoPath) >= 2;
+            remotes = await GitAsync(repoPath, cancellationToken,
+                "remote", "--verbose").ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            log = await GitAsync(repoPath, cancellationToken,
+                "log", $"-{CommitCount}", "--pretty=format:%h%x09%s%x09%an%x09%ar").ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        var parsed = status.ExitCode == 0 ? ParseStatus(status.StdOut) : default;
+        var (hasRemote, remoteOk, remoteHost) = ParseRemotes(remotes.StdOut);
+        var (version, versionMismatch) = ReadVersion(repoPath, name);
+
+        var branch = !isGit
+            ? "—"
+            : parsed.Detached || string.IsNullOrWhiteSpace(parsed.Branch)
+                ? "detached"
+                : parsed.Branch;
+
+        var isWorkspace = forceWorkspace || CountProjectMarkers(repoPath, 0) >= 2;
 
         return new ProjectModel
         {
@@ -215,59 +262,96 @@ public sealed class ScanEngine : IScanEngine
             HasRemote = hasRemote,
             RemoteOk = remoteOk,
             RemoteHost = remoteHost,
-            Dirty = dirty,
-            BehindUpstream = behind,
-            StatusText = StatusTextFor(hasRemote, dirty, behind),
-            RecentCommits = commits,
+            Dirty = parsed.Dirty,
+            BehindUpstream = parsed.Behind > 0,
+            StatusText = !isGit
+                ? "Not a git repository"
+                : StatusTextFor(hasRemote, parsed.Dirty, parsed.Behind),
+            RecentCommits = ParseCommits(log.StdOut),
             Components = forceWorkspace ? BuildComponents(repoPath, name) : Array.Empty<ComponentInfo>(),
         };
     }
 
-    private static async Task<(string Branch, bool Dirty, bool Behind)> ParseStatusAsync(GitResult status, string repoPath)
+    private static Task<GitResult> GitAsync(string repoPath, CancellationToken cancellationToken, params string[] args)
     {
-        var lines = status.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        var dirty = lines.Any(l => !l.StartsWith("##"));
-        var behind = lines.Any(l => BehindRegex.IsMatch(l));
-
-        var branch = ParseBriefBranch(lines.FirstOrDefault(l => l.StartsWith("##")));
-        if (string.IsNullOrEmpty(branch))
-        {
-            // Unborn branch (no commits yet) or missing brief line → ask git.
-            var symbolic = await GitRunner.RunAsync(repoPath, "symbolic-ref", "--short", "HEAD").ConfigureAwait(false);
-            branch = symbolic.ExitCode == 0 && !string.IsNullOrWhiteSpace(symbolic.StdOut)
-                ? symbolic.StdOut.Trim()
-                : "detached";
-        }
-
-        return (branch, dirty, behind);
+        var full = new string[GitPrelude.Length + args.Length];
+        GitPrelude.CopyTo(full, 0);
+        args.CopyTo(full, GitPrelude.Length);
+        return GitRunner.RunAsync(repoPath, cancellationToken, full);
     }
 
-    private static string ParseBriefBranch(string? brief)
+    /// <summary>
+    /// Parses porcelain v2 headers and entries. Public because it is the part
+    /// most likely to break on a line-ending change, and a parser test does not
+    /// need a repository to catch that.
+    /// <para>
+    /// v2 is used instead of v1 because its branch headers are stable and
+    /// machine-readable (<c># branch.ab +2 -3</c>), which removes both the
+    /// second <c>rev-list</c> call and any dependence on localised text.
+    /// </para>
+    /// </summary>
+    public static StatusInfo ParseStatus(string stdout)
     {
-        if (string.IsNullOrEmpty(brief) || NoCommitsRegex.IsMatch(brief))
+        var branch = string.Empty;
+        var detached = false;
+        var unborn = false;
+        var ahead = 0;
+        var behind = 0;
+        var dirty = false;
+
+        foreach (var raw in stdout.Split('\n'))
         {
-            return string.Empty;
+            var line = raw.TrimEnd('\r');
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            if (line[0] == '#')
+            {
+                if (line.StartsWith("# branch.head ", StringComparison.Ordinal))
+                {
+                    var value = line["# branch.head ".Length..].Trim();
+                    if (string.Equals(value, "(detached)", StringComparison.Ordinal))
+                    {
+                        detached = true;
+                    }
+                    else
+                    {
+                        branch = value;
+                    }
+                }
+                else if (line.StartsWith("# branch.oid ", StringComparison.Ordinal))
+                {
+                    unborn = line["# branch.oid ".Length..].Trim() == "(initial)";
+                }
+                else if (line.StartsWith("# branch.ab ", StringComparison.Ordinal))
+                {
+                    foreach (var token in line["# branch.ab ".Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        if (token.StartsWith('+') && int.TryParse(token[1..], out var a))
+                        {
+                            ahead = a;
+                        }
+                        else if (token.StartsWith('-') && int.TryParse(token[1..], out var b))
+                        {
+                            behind = b;
+                        }
+                    }
+                }
+
+                continue;
+            }
+
+            // Entries start with the record type: 1 (changed), 2 (renamed),
+            // u (unmerged), ? (untracked). '!' is ignored and never counts.
+            if (line[0] is '1' or '2' or 'u' or '?')
+            {
+                dirty = true;
+            }
         }
 
-        var token = brief[2..].Trim();
-        if (token.StartsWith("HEAD (", StringComparison.Ordinal))
-        {
-            return "detached";
-        }
-
-        var dots = token.IndexOf("...", StringComparison.Ordinal);
-        if (dots >= 0)
-        {
-            token = token[..dots];
-        }
-
-        var bracket = token.IndexOf('[');
-        if (bracket >= 0)
-        {
-            token = token[..bracket];
-        }
-
-        return token.Trim();
+        return new StatusInfo(branch, detached, unborn, ahead, behind, dirty);
     }
 
     private static (bool HasRemote, bool RemoteOk, string RemoteHost) ParseRemotes(string stdout)
@@ -302,7 +386,7 @@ public sealed class ScanEngine : IScanEngine
         var commits = new List<CommitInfo>();
         foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
-            var parts = line.Split('\t');
+            var parts = line.TrimEnd('\r').Split('\t');
             if (parts.Length < 4)
             {
                 continue;
@@ -320,20 +404,10 @@ public sealed class ScanEngine : IScanEngine
         return commits;
     }
 
-    private static (string Version, bool Mismatch) ReadVersion(string repoPath)
+    private static (string Version, bool Mismatch) ReadVersion(string repoPath, string folderName)
     {
-        string[] files;
-        try
-        {
-            files = Directory.GetFiles(repoPath, "*.csproj");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return ("—", false);
-        }
-
-        var csproj = files.FirstOrDefault();
-        if (csproj is null)
+        var projectFile = SelectProjectFile(PathHygiene.SafeEnumerateFiles(repoPath), folderName);
+        if (projectFile is null)
         {
             return ("—", false);
         }
@@ -341,9 +415,9 @@ public sealed class ScanEngine : IScanEngine
         string content;
         try
         {
-            content = File.ReadAllText(csproj);
+            content = File.ReadAllText(projectFile);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return ("—", false);
         }
@@ -366,61 +440,69 @@ public sealed class ScanEngine : IScanEngine
         return (version, mismatch);
     }
 
-    private static int CountSubfolderProjects(string repoPath) => CountUnder(repoPath);
-
-    private static int CountUnder(string dir)
+    /// <summary>
+    /// <c>&lt;FolderName&gt;.csproj</c> when it exists, otherwise the
+    /// alphabetically first one. Never the first entry of an unordered listing:
+    /// a card's version must not change between two scans of the same disk.
+    /// </summary>
+    public static string? SelectProjectFile(IEnumerable<string> files, string folderName)
     {
-        var count = 0;
-        foreach (var sub in SafeGetDirectories(dir))
+        var projectFiles = files
+            .Where(f => f.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (projectFiles.Count == 0)
         {
-            count += SafeGetFiles(sub).Count(f =>
-                MarkerExtensions.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)));
-            count += CountUnder(sub);
+            return null;
+        }
+
+        return projectFiles.FirstOrDefault(f =>
+                   string.Equals(Path.GetFileNameWithoutExtension(f), folderName, StringComparison.OrdinalIgnoreCase))
+               ?? projectFiles[0];
+    }
+
+    private static int CountProjectMarkers(string directory, int depth)
+    {
+        if (depth > MaxMarkerSearchDepth)
+        {
+            return 0;
+        }
+
+        var count = PathHygiene.SafeEnumerateFiles(directory).Count(IsMarker);
+        foreach (var child in PathHygiene.SafeEnumerateDirectories(directory))
+        {
+            if (PathHygiene.IsIgnoredFolderName(Path.GetFileName(child)) || PathHygiene.IsReparsePoint(child))
+            {
+                continue;
+            }
+
+            count += CountProjectMarkers(child, depth + 1);
+            if (count >= MaxMarkerFiles)
+            {
+                break;
+            }
         }
 
         return count;
-    }
-
-    private static string[] SafeGetDirectories(string dir)
-    {
-        try
-        {
-            return Directory.GetDirectories(dir);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return Array.Empty<string>();
-        }
-    }
-
-    private static string[] SafeGetFiles(string dir)
-    {
-        try
-        {
-            return Directory.GetFiles(dir);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return Array.Empty<string>();
-        }
     }
 
     private static IReadOnlyList<ComponentInfo> BuildComponents(string repoPath, string repoName)
     {
         var components = new List<ComponentInfo>();
 
-        var csproj = SafeGetFiles(repoPath).FirstOrDefault(f => f.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase));
-        if (csproj is not null)
+        var projectFile = SelectProjectFile(PathHygiene.SafeEnumerateFiles(repoPath), repoName);
+        if (projectFile is not null)
         {
             components.Add(new ComponentInfo
             {
                 Name = $"{repoName} app",
-                RelativePath = $@"{repoName}\{Path.GetFileName(csproj)}",
+                RelativePath = $@"{repoName}\{Path.GetFileName(projectFile)}",
                 Kind = "app",
             });
         }
 
-        foreach (var dir in SafeGetDirectories(repoPath))
+        foreach (var dir in PathHygiene.SafeEnumerateDirectories(repoPath))
         {
             var dirName = Path.GetFileName(dir);
             if (dirName is null)
@@ -448,7 +530,7 @@ public sealed class ScanEngine : IScanEngine
         return components;
     }
 
-    private static string StatusTextFor(bool hasRemote, bool dirty, bool behind)
+    private static string StatusTextFor(bool hasRemote, bool dirty, int behind)
     {
         if (!hasRemote)
         {
@@ -460,6 +542,6 @@ public sealed class ScanEngine : IScanEngine
             return "Uncommitted changes";
         }
 
-        return behind ? "Behind upstream" : "Clean working tree";
+        return behind > 0 ? "Behind upstream" : "Clean working tree";
     }
 }

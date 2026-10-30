@@ -135,11 +135,13 @@ public sealed class ProjectCatalog
     /// is a valid result and must not make every page visit rescan the disk.
     /// </para>
     /// </summary>
-    public Task<CatalogSnapshot> GetOrRefreshAsync(CancellationToken cancellationToken = default)
+    public Task<CatalogSnapshot> GetOrRefreshAsync(
+        CancellationToken cancellationToken = default,
+        IProgress<ScanProgress>? progress = null)
     {
         var current = Snapshot;
         return current.CapturedAt == DateTimeOffset.MinValue
-            ? RefreshAsync(cancellationToken)
+            ? RefreshAsync(cancellationToken, progress)
             : Task.FromResult(current);
     }
 
@@ -179,8 +181,10 @@ public sealed class ProjectCatalog
 
         try
         {
-            var result = await _engine
-                .ScanAsync(cancellationToken, progress)
+            // Task.Run: the walk over the disk is synchronous work, and a page
+            // must never have its UI thread inside a Directory.GetDirectories.
+            var result = await Task
+                .Run(() => _engine.ScanAsync(cancellationToken, progress), cancellationToken)
                 .ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
