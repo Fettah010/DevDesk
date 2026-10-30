@@ -335,8 +335,9 @@ public class ScanEngineTests
 
         Assert.Equal(3, result.Projects.Count);
 
-        // Progress<T> posts asynchronously; give it a moment to drain.
-        for (var attempt = 0; attempt < 50 && reports.Count == 0; attempt++)
+        // Progress<T> posts asynchronously; wait for the final report instead
+        // of stopping after whichever worker happens to report first.
+        for (var attempt = 0; attempt < 100 && !reports.Any(report => report.Total == 3 && report.Completed == 3); attempt++)
         {
             await Task.Delay(20);
         }
