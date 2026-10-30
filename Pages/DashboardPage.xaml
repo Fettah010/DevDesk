@@ -192,34 +192,50 @@
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <Grid Grid.Row="0">
-            <StackPanel Spacing="2">
-                <TextBlock Text="Dashboard" Style="{ThemeResource TitleTextBlockStyle}" FontWeight="SemiBold"/>
-                <TextBlock
-                    x:Name="SubtitleText"
-                    Style="{ThemeResource BodyTextBlockStyle}"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <TextBlock
-                    x:Name="LastRefreshText"
-                    Style="{ThemeResource CaptionTextBlockStyle}"
-                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                    VerticalAlignment="Center"/>
-                <Button x:Name="RefreshButton" CornerRadius="8" Click="RefreshButton_Click">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                        <TextBlock Text="Refresh"/>
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-        </Grid>
+        <StackPanel Grid.Row="0" Spacing="10">
+            <Grid>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Dashboard" Style="{ThemeResource TitleTextBlockStyle}" FontWeight="SemiBold"/>
+                    <TextBlock
+                        x:Name="SubtitleText"
+                        Text="{x:Bind ViewModel.Subtitle, Mode=OneWay}"
+                        Style="{ThemeResource BodyTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock
+                        x:Name="LastRefreshText"
+                        Text="{x:Bind ViewModel.LastRefreshText, Mode=OneWay}"
+                        Style="{ThemeResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        VerticalAlignment="Center"/>
+                    <Button x:Name="RefreshButton" CornerRadius="8" Command="{x:Bind ViewModel.RefreshCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE72C;" FontSize="14"/>
+                            <TextBlock Text="Refresh"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <InfoBar
+                x:Name="ScanErrorBar"
+                Severity="Error"
+                Title="Scan failed"
+                Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                IsClosable="True">
+                <InfoBar.ActionButton>
+                    <Button Content="Retry" Command="{x:Bind ViewModel.RefreshCommand}"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </StackPanel>
 
         <!-- Summary cards -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="14">
             <Border Style="{StaticResource DevCardStyle}" Width="196" Height="76" Padding="16,12">
                 <StackPanel Spacing="2">
-                    <TextBlock x:Name="ProjectsCountText" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold" FontSize="26"/>
+                    <TextBlock x:Name="ProjectsCountText" Text="{x:Bind ViewModel.ProjectCountText, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold" FontSize="26"/>
                     <TextBlock Text="Projects" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                 </StackPanel>
             </Border>
@@ -227,6 +243,7 @@
                 <StackPanel Spacing="2">
                     <TextBlock
                         x:Name="CleanCountText"
+                        Text="{x:Bind ViewModel.CleanCountText, Mode=OneWay}"
                         Style="{ThemeResource SubtitleTextBlockStyle}"
                         FontWeight="SemiBold" FontSize="26"
                         Foreground="{ThemeResource SystemFillColorSuccessBrush}"/>
@@ -237,6 +254,7 @@
                 <StackPanel Spacing="2">
                     <TextBlock
                         x:Name="AttentionCountText"
+                        Text="{x:Bind ViewModel.AttentionCountText, Mode=OneWay}"
                         Style="{ThemeResource SubtitleTextBlockStyle}"
                         FontWeight="SemiBold" FontSize="26"
                         Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
@@ -245,7 +263,7 @@
             </Border>
             <Border Style="{StaticResource DevCardStyle}" Width="196" Height="76" Padding="16,12">
                 <StackPanel Spacing="2">
-                    <TextBlock x:Name="RemoteCountText" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold" FontSize="26"/>
+                    <TextBlock x:Name="RemoteCountText" Text="{x:Bind ViewModel.RemoteCountText, Mode=OneWay}" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold" FontSize="26"/>
                     <TextBlock Text="Remote repos" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                 </StackPanel>
             </Border>
@@ -263,11 +281,12 @@
                     CornerRadius="6"
                     Padding="7,1"
                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
-                    <TextBlock x:Name="ProjectsCountPillText" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock x:Name="ProjectsCountPillText" Text="{x:Bind ViewModel.ProjectsPillText, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </Border>
             </StackPanel>
             <TextBlock
                 x:Name="ScanPathText"
+                Text="{x:Bind ViewModel.ScanPathText, Mode=OneWay}"
                 Style="{ThemeResource CaptionTextBlockStyle}"
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 HorizontalAlignment="Right"
@@ -277,6 +296,8 @@
         <GridView
             Grid.Row="3"
             x:Name="ProjectsGrid"
+            Visibility="{x:Bind ViewModel.ProjectsVisibility, Mode=OneWay}"
+            ItemsSource="{x:Bind ViewModel.Projects, Mode=OneWay}"
             SelectionMode="None"
             IsItemClickEnabled="True"
             ItemClick="ProjectsGrid_ItemClick"
@@ -285,20 +306,35 @@
             Padding="0,2,0,0"
             ToolTipService.ToolTip="Click a card for actions: open in Explorer / open in Visual Studio"/>
 
-        <!-- Loading / progress overlay: shown while a (simulated) rescan runs.
-             The real ProjectScanner will keep this visible for as long as the
-             scan takes. -->
+        <!-- Empty state: a scan that found nothing is not an error. -->
+        <Border
+            Grid.Row="3"
+            Style="{StaticResource DevCardStyle}"
+            Padding="24"
+            VerticalAlignment="Top"
+            Visibility="{x:Bind ViewModel.EmptyVisibility, Mode=OneWay}">
+            <StackPanel Spacing="6">
+                <TextBlock Text="No projects yet" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                <TextBlock
+                    Text="Put a repository (or a folder with a .sln/.csproj) inside the DevEcosystem folder and refresh."
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Loading overlay: visible for the whole scan, with the live count. -->
         <Grid
             x:Name="BusyOverlay"
             Grid.RowSpan="4"
-            Visibility="Collapsed"
+            Visibility="{x:Bind ViewModel.BusyVisibility, Mode=OneWay}"
             Background="{ThemeResource LayerFillColorDefaultBrush}"
             Opacity="0.9">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                <ProgressRing x:Name="BusyRing" IsActive="False" Width="36" Height="36"/>
+                <ProgressRing x:Name="BusyRing" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="36" Height="36"/>
                 <TextBlock
                     x:Name="BusyText"
-                    Text="Refreshing projects…"
+                    Text="Scanning the DevEcosystem folder…"
                     Style="{ThemeResource BodyTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>

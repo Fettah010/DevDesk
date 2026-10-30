@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using DevDesk.Models;
 
@@ -12,13 +13,27 @@ namespace DevDesk.Services;
 public sealed class ScannerResult
 {
     public ProjectModel? Self { get; init; }
+
     public IReadOnlyList<ProjectModel> Projects { get; init; } = Array.Empty<ProjectModel>();
 }
 
 /// <summary>
-/// Phase 0 ProjectScanner. Looks inside <see cref="DefaultScanRoot"/> (the
-/// DevEcosystem folder), finds git repos / project-marked folders, and reads
-/// read-only git state + csproj versions per the scan model in AGENTS.md:
+/// Contract the catalog depends on, so tests can inject a fake scan without
+/// touching git or the file system.
+/// </summary>
+public interface IScanEngine
+{
+    string ScanRoot { get; }
+
+    Task<ScannerResult> ScanAsync(
+        CancellationToken cancellationToken = default,
+        IProgress<ScanProgress>? progress = null);
+}
+
+/// <summary>
+/// Walks <see cref="DefaultScanRoot"/> (the DevEcosystem folder), finds git
+/// repos / project-marked folders, and reads read-only git state + csproj
+/// versions per the scan model in AGENTS.md:
 ///
 ///  * Scan root = DevEcosystem, depth 2.
 ///  * DevDesk itself is never a scanned project — it becomes the self
@@ -26,8 +41,11 @@ public sealed class ScannerResult
 ///  * Stop descending once a repo is found (its contents are not more projects).
 ///  * Hygiene: skip bin/obj/.git/.vs/node_modules/Releases/Logs/….
 ///  * Local-only: no network calls, no writes — a broken git never crashes a scan.
+///
+/// W-0.1.5 moved this here verbatim from <c>ProjectScanner</c>; the correctness
+/// work (`.git` files, self discovery, determinism, porcelain v2) is W-0.1.6.
 /// </summary>
-public sealed class ProjectScanner
+public sealed class ScanEngine : IScanEngine
 {
     public const string DefaultScanRoot = @"C:\Code\projects\DevEcosystem";
     public const int DefaultMaxDepth = 2;
@@ -57,7 +75,7 @@ public sealed class ProjectScanner
     private readonly string _selfPath;
     private readonly int _maxDepth;
 
-    public ProjectScanner(string? root = null, string? selfPath = null, int maxDepth = DefaultMaxDepth)
+    public ScanEngine(string? root = null, string? selfPath = null, int maxDepth = DefaultMaxDepth)
     {
         _root = root ?? DefaultScanRoot;
         _selfPath = (selfPath ?? Path.Combine(_root, SelfRepoName)).TrimEnd('\\', '/');
@@ -65,26 +83,38 @@ public sealed class ProjectScanner
     }
 
     public string ScanRoot => _root;
+
     public string SelfPath => _selfPath;
 
-    public async Task<ScannerResult> ScanAsync()
+    public async Task<ScannerResult> ScanAsync(
+        CancellationToken cancellationToken = default,
+        IProgress<ScanProgress>? progress = null)
     {
         var projects = new List<ProjectModel>();
 
         if (Directory.Exists(_root))
         {
-            await WalkAsync(_root, 1, projects).ConfigureAwait(false);
+            await WalkAsync(_root, 1, projects, cancellationToken, progress).ConfigureAwait(false);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         var self = Directory.Exists(_selfPath) && IsRepositoryRoot(_selfPath)
-            ? await BuildModelAsync(_selfPath, forceWorkspace: true).ConfigureAwait(false)
+            ? await BuildModelAsync(_selfPath, forceWorkspace: true, cancellationToken).ConfigureAwait(false)
             : (ProjectModel?)null;
 
         return new ScannerResult { Self = self, Projects = projects };
     }
 
-    private async Task WalkAsync(string dir, int depth, List<ProjectModel> projects)
+    private async Task WalkAsync(
+        string dir,
+        int depth,
+        List<ProjectModel> projects,
+        CancellationToken cancellationToken,
+        IProgress<ScanProgress>? progress)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         string[] children;
         try
         {
@@ -97,6 +127,8 @@ public sealed class ProjectScanner
 
         foreach (var child in children.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var name = Path.GetFileName(child);
             if (name is null || IsIgnored(name) || name.Length > 0 && name[0] == '.')
             {
@@ -110,15 +142,16 @@ public sealed class ProjectScanner
 
             if (IsRepositoryRoot(child) || HasProjectMarker(child))
             {
-                var model = await BuildModelAsync(child, forceWorkspace: false).ConfigureAwait(false);
+                var model = await BuildModelAsync(child, forceWorkspace: false, cancellationToken).ConfigureAwait(false);
                 if (model is not null)
                 {
                     projects.Add(model);
+                    progress?.Report(new ScanProgress(projects.Count, 0, model.Name));
                 }
             }
             else if (depth < _maxDepth)
             {
-                await WalkAsync(child, depth + 1, projects).ConfigureAwait(false);
+                await WalkAsync(child, depth + 1, projects, cancellationToken, progress).ConfigureAwait(false);
             }
         }
     }
@@ -145,7 +178,10 @@ public sealed class ProjectScanner
         return files.Any(f => MarkerExtensions.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)));
     }
 
-    private async Task<ProjectModel?> BuildModelAsync(string repoPath, bool forceWorkspace)
+    private async Task<ProjectModel?> BuildModelAsync(
+        string repoPath,
+        bool forceWorkspace,
+        CancellationToken cancellationToken)
     {
         var name = Path.GetFileName(repoPath.TrimEnd('\\', '/'));
         if (string.IsNullOrEmpty(name))
@@ -158,6 +194,8 @@ public sealed class ProjectScanner
         var log = status.ExitCode == 0
             ? await GitRunner.RunAsync(repoPath, "log", $"-{CommitCount}", "--pretty=format:%h%x09%s%x09%an%x09%ar").ConfigureAwait(false)
             : status;
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         var (branch, dirty, behind) = await ParseStatusAsync(status, repoPath).ConfigureAwait(false);
         var (hasRemote, remoteOk, remoteHost) = ParseRemotes(remoteVerbose.StdOut);

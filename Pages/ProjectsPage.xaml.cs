@@ -18,10 +18,20 @@ public sealed partial class ProjectsPage : Page
 
     private async Task LoadProjectsAsync()
     {
-        var result = await Task.Run(() => new ProjectScanner().ScanAsync());
-        ProjectsList.ItemsSource = result.Projects;
-        if (ProjectsList.Items.Count > 0)
-            ProjectsList.SelectedIndex = 0;
+        try
+        {
+            var snapshot = await AppServices.Catalog.GetOrRefreshAsync();
+            ProjectsList.ItemsSource = snapshot.Projects;
+            if (ProjectsList.Items.Count > 0)
+                ProjectsList.SelectedIndex = 0;
+        }
+        catch (System.Exception ex)
+        {
+            NotWiredInfoBar.Severity = InfoBarSeverity.Error;
+            NotWiredInfoBar.Title = "Could not read the project list";
+            NotWiredInfoBar.Message = ex.Message;
+            NotWiredInfoBar.IsOpen = true;
+        }
     }
 
     private void ProjectsList_SelectionChanged(object sender, SelectionChangedEventArgs e)

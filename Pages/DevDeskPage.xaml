@@ -58,6 +58,7 @@
                         VerticalAlignment="Center">
                         <TextBlock
                             x:Name="SelfVersionText"
+                            Text="{x:Bind ViewModel.SelfVersionText, Mode=OneWay}"
                             FontSize="11"
                             FontWeight="SemiBold"
                             Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
@@ -69,7 +70,7 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <Button x:Name="RefreshSelfButton" CornerRadius="8" Click="RefreshSelfButton_Click">
+                <Button x:Name="RefreshSelfButton" CornerRadius="8" Command="{x:Bind ViewModel.RefreshCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE72C;" FontSize="14"/>
                         <TextBlock Text="Refresh"/>
@@ -108,6 +109,7 @@
             </StackPanel>
             <TextBlock
                 x:Name="SelfPathText"
+                Text="{x:Bind ViewModel.SelfPathText, Mode=OneWay}"
                 Style="{ThemeResource CaptionTextBlockStyle}"
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 HorizontalAlignment="Right"
@@ -150,6 +152,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <TextBlock
                                 x:Name="SelfNameText"
+                                Text="{x:Bind ViewModel.SelfNameText, Mode=OneWay}"
                                 Style="{ThemeResource BodyStrongTextBlockStyle}"/>
                             <Border
                                 CornerRadius="6"
@@ -160,17 +163,18 @@
                             <Border CornerRadius="6" Padding="6,2" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                                 <StackPanel Orientation="Horizontal" Spacing="5">
                                     <Ellipse Width="6" Height="6" Fill="{ThemeResource SystemFillColorCautionBrush}" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="SelfBranchText" FontSize="11" FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="SelfBranchText" Text="{x:Bind ViewModel.SelfBranchText, Mode=OneWay}" FontSize="11" FontWeight="SemiBold"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
                         <TextBlock
                             x:Name="SelfStatusText"
+                            Text="{x:Bind ViewModel.SelfStatusText, Mode=OneWay}"
                             Style="{ThemeResource BodyTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     </StackPanel>
                 </Grid>
-                <GridView Grid.Row="1" x:Name="SelfCommitsGrid" SelectionMode="None" IsItemClickEnabled="False"
+                <GridView Grid.Row="1" x:Name="SelfCommitsGrid" ItemsSource="{x:Bind ViewModel.Commits, Mode=OneWay}" SelectionMode="None" IsItemClickEnabled="False"
                           ItemTemplate="{StaticResource CommitTemplate}" Padding="0,2,0,0" Height="Auto"/>
             </Grid>
         </Border>
@@ -180,11 +184,11 @@
             Grid.Row="4"
             Style="{StaticResource DevCardStyle}"
             Padding="18,16"
-            Visibility="Collapsed"
+            Visibility="{x:Bind ViewModel.ComponentsVisibility, Mode=OneWay}"
             x:Name="ComponentsCard">
             <StackPanel Spacing="10">
                 <TextBlock Text="COMPONENTS" Style="{ThemeResource CaptionTextBlockStyle}" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
-                <ItemsControl x:Name="SelfComponentsList">
+                <ItemsControl x:Name="SelfComponentsList" ItemsSource="{x:Bind ViewModel.Components, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:ComponentInfo">
                             <Grid ColumnSpacing="10" Margin="0,4">
@@ -217,15 +221,15 @@
             </StackPanel>
         </Border>
 
-        <!-- Loading / progress overlay for the (simulated) repo-state check. -->
+        <!-- Loading overlay for the shared scan. -->
         <Grid
             x:Name="BusyOverlay"
             Grid.RowSpan="5"
-            Visibility="Collapsed"
+            Visibility="{x:Bind ViewModel.BusyVisibility, Mode=OneWay}"
             Background="{ThemeResource LayerFillColorDefaultBrush}"
             Opacity="0.9">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                <ProgressRing x:Name="BusyRing" IsActive="False" Width="36" Height="36"/>
+                <ProgressRing x:Name="BusyRing" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="36" Height="36"/>
                 <TextBlock
                     Text="Checking repo state…"
                     Style="{ThemeResource BodyTextBlockStyle}"

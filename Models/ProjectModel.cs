@@ -34,9 +34,9 @@ public sealed class ComponentInfo
 
 /// <summary>
 /// A detected project (or "workspace" — one git repo hosting several
-/// solutions). Populated by <see cref="DevDesk.Services.ProjectScanner"/>:
-/// the projects list feeds Dashboard/Projects, and the self workspace feeds
-/// the dedicated DevDesk page.
+/// solutions). Populated by <see cref="DevDesk.Services.ScanEngine"/> through
+/// <see cref="DevDesk.Services.ProjectCatalog"/>: the projects list feeds
+/// Dashboard/Projects, and the self workspace feeds the dedicated DevDesk page.
 /// </summary>
 public sealed class ProjectModel
 {

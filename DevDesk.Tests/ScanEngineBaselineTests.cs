@@ -5,11 +5,11 @@ using Xunit;
 namespace DevDesk.Tests;
 
 /// <summary>
-/// Integration-ish tests for the Phase 0 ProjectScanner: each test builds real
+/// Integration-ish tests for the scan engine: each test builds real
 /// (tiny) git repos in a temp folder and asserts on the scan output. Requires
 /// git on PATH (it is, on the dev machine).
 /// </summary>
-public class ProjectScannerTests : IDisposable
+public class ScanEngineBaselineTests : IDisposable
 {
     private readonly TempRoot _tmp = new();
 
@@ -236,12 +236,12 @@ public class ProjectScannerTests : IDisposable
     [Fact]
     public async Task Scan_RealEcosystem_YieldsTemplate_AndNotSelf()
     {
-        if (!Directory.Exists(ProjectScanner.DefaultScanRoot))
+        if (!Directory.Exists(ScanEngine.DefaultScanRoot))
         {
             return;
         }
 
-        var result = await new ProjectScanner().ScanAsync();
+        var result = await new ScanEngine().ScanAsync();
 
         Assert.NotEmpty(result.Projects);
         Assert.DoesNotContain(result.Projects, p => p.Name == "DevDesk");
@@ -259,10 +259,10 @@ public class ProjectScannerTests : IDisposable
     }
 
     private Task<ScannerResult> Scan(string root, string selfPath) =>
-        new ProjectScanner(root, selfPath).ScanAsync();
+        new ScanEngine(root, selfPath).ScanAsync();
 
     private Task<ScannerResult> ScanRoot(string root) =>
-        new ProjectScanner(root, Path.Combine(root, "_no-such-self_")).ScanAsync();
+        new ScanEngine(root, Path.Combine(root, "_no-such-self_")).ScanAsync();
 
     private static async Task<string> InitRepoAsync(string root, string name)
     {

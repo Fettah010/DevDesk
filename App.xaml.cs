@@ -13,6 +13,9 @@ public partial class App : Application
     {
         this.InitializeComponent();
 
+        // One service graph for the whole process, before any page exists.
+        AppServices.Initialize();
+
         // XAML/UI-thread exceptions: log them, but keep default handling.
         // (Setting e.Handled = true would suppress the crash; a template should
         //  not hide bugs, so we re-throw through the default path.)
