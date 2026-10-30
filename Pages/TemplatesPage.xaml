@@ -10,7 +10,6 @@
     <Grid Padding="28,20,28,24" RowSpacing="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -23,9 +22,7 @@
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
         </StackPanel>
 
-        <InfoBar x:Name="TemplatesInfoBar" Grid.Row="1" Severity="Informational" IsOpen="False" IsClosable="True"/>
-
-        <Grid Grid.Row="2" ColumnSpacing="16">
+        <Grid Grid.Row="1" ColumnSpacing="16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="300"/>
                 <ColumnDefinition Width="*"/>
@@ -94,11 +91,18 @@
                 </StackPanel>
             </Border>
 
-            <!-- Right: wizard (placeholder, none of this runs yet). -->
+            <!-- Right: the wizard's intended shape. Nothing here creates anything
+                 yet, and the caption at the top says so before anyone fills it in. -->
             <Border Grid.Column="1" Style="{StaticResource DevCardStyle}" Padding="22">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="18">
-                        <TextBlock Text="New project" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="New project" Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold"/>
+                            <TextBlock
+                                Text="Preview of the v0.4.0 wizard — nothing on this page creates a project yet."
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+                        </StackPanel>
 
                         <!-- 1. Template -->
                         <TextBlock
@@ -143,7 +147,10 @@
                             </Grid.ColumnDefinitions>
                             <TextBox Grid.Column="0" x:Name="NewAppLocation" Text="C:\Code\projects\DevEcosystem" Header="Location (next to the template)"/>
                             <Button Grid.Column="1" VerticalAlignment="Bottom" CornerRadius="8"
-                                    Tag="browse" Click="WizardAction_Click" ToolTipService.ToolTip="Browse… (Phase 1)">
+                                    x:Name="BrowseButton"
+                                    IsEnabled="False"
+                                    AutomationProperties.Name="Browse for a location (arrives in v0.4.0)"
+                                    ToolTipService.ToolTip="The folder picker arrives in v0.4.0">
                                 <FontIcon Glyph="&#xE838;" FontSize="14"/>
                             </Button>
                         </Grid>
@@ -156,7 +163,14 @@
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
                         <StackPanel Spacing="8">
                             <ToggleSwitch Header="Initialize git repository" IsOn="True"/>
-                            <ToggleSwitch Header="Create GitHub repository" OffContent="Needs a token (Phase 2)" IsOn="False"/>
+                            <ToggleSwitch
+                                x:Name="CreateRepoSwitch"
+                                Header="Create GitHub repository"
+                                OffContent="Needs a token (v0.5.0)"
+                                IsOn="False"
+                                IsEnabled="False"
+                                AutomationProperties.Name="Create GitHub repository (arrives in v0.5.0)"
+                                ToolTipService.ToolTip="Creating a repository arrives in v0.5.0"/>
                             <TextBox Text="0.0.1" Width="140" Header="Starting version" HorizontalAlignment="Left"/>
                         </StackPanel>
 
@@ -170,12 +184,24 @@
                             <TextBlock x:Name="PreviewText" FontFamily="Consolas" FontSize="12"/>
                         </Border>
 
-                        <!-- Footer -->
-                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right"
-                                    Margin="0,6,0,0">
-                            <Button Content="Cancel" CornerRadius="8" Tag="cancel" Click="WizardAction_Click"/>
-                            <Button Content="Create project" Style="{ThemeResource AccentButtonStyle}" CornerRadius="8"
-                                    Tag="create" Click="WizardAction_Click"/>
+                        <!-- Footer: the only action that would write to disk, so it
+                             stays disabled with the reason until it can actually run. -->
+                        <StackPanel Spacing="6" Margin="0,6,0,0">
+                            <Button
+                                x:Name="CreateProjectButton"
+                                Content="Create project"
+                                Style="{ThemeResource AccentButtonStyle}"
+                                CornerRadius="8"
+                                HorizontalAlignment="Right"
+                                IsEnabled="False"
+                                AutomationProperties.Name="Create project (arrives in v0.4.0)"
+                                ToolTipService.ToolTip="Creating a project arrives in v0.4.0"/>
+                            <TextBlock
+                                Text="Creating a project arrives in v0.4.0 — the template is copied, names are replaced, then git init and a first build."
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                TextAlignment="Right"
+                                TextWrapping="Wrap"/>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

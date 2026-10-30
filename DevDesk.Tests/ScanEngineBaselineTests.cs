@@ -216,7 +216,7 @@ public class ScanEngineBaselineTests : IDisposable
             self,
             "SelfRepo.csproj",
             "DevDesk.Tests/DevDesk.Tests.csproj",
-            "docs/DEVDESK-PLAN.md",
+            "docs/DEVDESK-ROADMAP.md",
             "Scripts/launch-dev.ps1");
         var other = await InitRepoAsync(_tmp.Path, "Other");
         await CommitAsync(other, "readme.txt");

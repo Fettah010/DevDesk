@@ -70,12 +70,25 @@ public sealed partial class SettingsPage : Page
             _ => AppTheme.System
         };
 
+        // Same reason as the channel below: layout selection is not a user choice,
+        // and re-applying it on every visit would be a settings write per visit.
+        if (theme == SettingsService.Current.Theme)
+        {
+            return;
+        }
+
         SettingsService.Current.Theme = theme;
         ThemeService.Apply(theme);
     }
 
     // The channel is persisted in settings and handed to the updater, which
     // rebuilds its Velopack manager against the new feed on the next check.
+    //
+    // The "is it different" test is not a micro-optimisation: a Segmented control
+    // raises SelectionChanged for its own layout selection after the page is
+    // shown, and _initialising is already false by then. Without the comparison,
+    // merely opening Settings announced "update channel set to beta" for a change
+    // nobody made — a fabricated confirmation.
     private async void ChannelSegment_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initialising)
@@ -90,6 +103,11 @@ public sealed partial class SettingsPage : Page
             _ => ReleaseChannels.Beta
         };
 
+        if (channel == UpdateService.Current.Channel)
+        {
+            return;
+        }
+
         // async void: nothing above can throw except the settings write, which
         // would otherwise be an unhandled exception on the UI thread.
         try
@@ -103,12 +121,6 @@ public sealed partial class SettingsPage : Page
             ShowInfoBar($"The channel could not be saved: {ex.Message}", InfoBarSeverity.Error);
         }
     }
-
-    private void SaveTokenButton_Click(object sender, RoutedEventArgs e) => ShowInfoBar(
-        "Token storage lands in Phase 2 — it will be kept in Windows Credential Manager.");
-
-    private void AddRootButton_Click(object sender, RoutedEventArgs e) => ShowInfoBar(
-        "Multiple scan roots land in 0.7.0. The single root is editable in settings.json.");
 
     // The one Settings action that is real today: it asks the updater and reports
     // what actually came back, including "not installed" from the build output.

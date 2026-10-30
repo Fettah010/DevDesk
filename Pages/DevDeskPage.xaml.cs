@@ -31,23 +31,17 @@ public sealed partial class DevDeskPage : Page
         ShowWarning("Nothing to open", "The DevDesk repo folder was not found.");
     }
 
+    // The roadmap, not the retired plan: this link must point at a file that
+    // exists, or it is a dead button that looks live.
     private void OpenPlanButton_Click(object sender, RoutedEventArgs e)
     {
-        var planPath = Path.Combine(ViewModel.SelfPath, "docs", "DEVDESK-PLAN.md");
-        if (ProjectOpenActions.OpenWithDefaultApp(planPath))
+        var roadmapPath = Path.Combine(ViewModel.SelfPath, "docs", "DEVDESK-ROADMAP.md");
+        if (ProjectOpenActions.OpenWithDefaultApp(roadmapPath))
         {
             return;
         }
 
-        ShowWarning("Plan doc not found", planPath);
-    }
-
-    // Phase 1 (GitService / BuildService) wires these to real actions.
-    private void StubAction_Click(object sender, RoutedEventArgs e)
-    {
-        ShowWarning(
-            "Not wired yet",
-            "Page actions arrive with the Phase 1 services (GitService / BuildService).");
+        ShowWarning("Roadmap not found", roadmapPath);
     }
 
     private void ShowWarning(string title, string message)

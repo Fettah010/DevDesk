@@ -59,10 +59,15 @@
 
                 <ctk:SettingsCard
                     Header="Scan roots"
-                    Description="Nested git repos and solutions are detected automatically. Hidden and build folders are ignored. The root is recorded in settings.json and becomes editable in 0.7.0.">
+                    Description="Nested git repos and solutions are detected automatically. Hidden and build folders are ignored. A second root arrives in v0.7.0.">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <TextBlock x:Name="ScanRootsText" FontSize="12" VerticalAlignment="Center"/>
-                        <Button x:Name="AddRootButton" CornerRadius="8" Click="AddRootButton_Click" ToolTipService.ToolTip="Add a second root (0.7.0)">
+                        <Button
+                            x:Name="AddRootButton"
+                            CornerRadius="8"
+                            IsEnabled="False"
+                            AutomationProperties.Name="Add a scan root (arrives in v0.7.0)"
+                            ToolTipService.ToolTip="Adding a scan root arrives in v0.7.0">
                             <FontIcon Glyph="&#xE710;" FontSize="14"/>
                         </Button>
                     </StackPanel>
@@ -70,7 +75,7 @@
 
                 <ctk:SettingsCard
                     Header="Ignore patterns"
-                    Description="Folders that are never walked. This build uses a fixed list; a user-editable list arrives in 0.7.0.">
+                    Description="Folders that are never walked. This build uses a fixed list; a user-editable list arrives in v0.7.0.">
                     <TextBlock
                         x:Name="IgnoresText"
                         Style="{ThemeResource CaptionTextBlockStyle}"
@@ -87,18 +92,33 @@
                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                     Margin="0,12,0,0"/>
 
+                <!-- Nothing is stored yet, so the box and the button are disabled:
+                     a token field that accepts a token and forgets it is worse than
+                     no field at all. -->
                 <ctk:SettingsCard
                     Header="Personal access token"
-                    Description="Stored via Windows Credential Manager — never written to disk or logs.">
+                    Description="Arrives in v0.5.0 — it will live in Windows Credential Manager, never in settings.json or the logs.">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <PasswordBox x:Name="TokenBox" Width="220" PlaceholderText="ghp_…" VerticalAlignment="Center"/>
-                        <Button x:Name="SaveTokenButton" Content="Save" CornerRadius="8" Click="SaveTokenButton_Click"/>
+                        <PasswordBox
+                            x:Name="TokenBox"
+                            Width="220"
+                            PlaceholderText="ghp_…"
+                            IsEnabled="False"
+                            VerticalAlignment="Center"
+                            AutomationProperties.Name="Personal access token (arrives in v0.5.0)"/>
+                        <Button
+                            x:Name="SaveTokenButton"
+                            Content="Save"
+                            CornerRadius="8"
+                            IsEnabled="False"
+                            AutomationProperties.Name="Save token (arrives in v0.5.0)"
+                            ToolTipService.ToolTip="Token storage arrives in v0.5.0"/>
                     </StackPanel>
                 </ctk:SettingsCard>
 
                 <ctk:SettingsCard
                     Header="Update channel"
-                    Description="Which release feed the app updates from. A tag decides the channel of a release: v1.2.3 is stable, v1.2.3-beta is beta, v1.2.3-dev is dev.">
+                    Description="Which release feed the app updates from. A tag decides the channel of a release: v0.2.0 is stable, v0.2.0-beta is beta, v0.2.0-dev is dev.">
                     <ctk:Segmented x:Name="ChannelSegment" SelectionChanged="ChannelSegment_SelectionChanged" SelectedIndex="1">
                         <ctk:SegmentedItem Content="stable"/>
                         <ctk:SegmentedItem Content="beta"/>

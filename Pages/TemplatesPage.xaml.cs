@@ -1,8 +1,13 @@
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
 namespace DevDesk.Pages;
 
+/// <summary>
+/// The template wizard's shape, labelled as such. The form is editable because the
+/// preview underneath it is honest — it shows the path a project would land in;
+/// the two actions that would touch the disk (browse, create) are disabled until
+/// v0.4.0, so nothing here can pretend to have created something.
+/// </summary>
 public sealed partial class TemplatesPage : Page
 {
     public TemplatesPage()
@@ -17,22 +22,5 @@ public sealed partial class TemplatesPage : Page
     {
         var name = string.IsNullOrWhiteSpace(NewAppName.Text) ? "MyNewApp" : NewAppName.Text.Trim();
         PreviewText.Text = $"→ {NewAppLocation.Text.TrimEnd('\\')}\\{name}";
-    }
-
-    private void WizardAction_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.Tag is not string action)
-            return;
-
-        TemplatesInfoBar.Title = action switch
-        {
-            "create" => "Project scaffolding lands in Phase 1",
-            "browse" => "Folder picker lands in Phase 1",
-            _ => "Cancelled"
-        };
-        TemplatesInfoBar.Message = action == "cancel"
-            ? "Nothing was created."
-            : "TemplateService will copy the template and token-replace names, then git init + smoke build.";
-        TemplatesInfoBar.IsOpen = true;
     }
 }

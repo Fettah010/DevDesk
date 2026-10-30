@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
@@ -16,6 +16,9 @@ public sealed partial class ProjectsPage : Page
         _ = LoadProjectsAsync();
     }
 
+    /// <summary>The project the detail pane is showing, for the open actions.</summary>
+    private ProjectModel? Selected => ProjectsList.SelectedItem as ProjectModel;
+
     private async Task LoadProjectsAsync()
     {
         try
@@ -25,12 +28,9 @@ public sealed partial class ProjectsPage : Page
             if (ProjectsList.Items.Count > 0)
                 ProjectsList.SelectedIndex = 0;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            NotWiredInfoBar.Severity = InfoBarSeverity.Error;
-            NotWiredInfoBar.Title = "Could not read the project list";
-            NotWiredInfoBar.Message = ex.Message;
-            NotWiredInfoBar.IsOpen = true;
+            ShowError("Could not read the project list", ex.Message);
         }
     }
 
@@ -46,7 +46,13 @@ public sealed partial class ProjectsPage : Page
 
         OverviewBranch.Text = p.Branch;
         OverviewVersion.Text = p.VersionDisplay;
-        OverviewRepo.Text = p.HasRemote ? $"{p.RemoteHost} — remote configured" : "Local only — add a remote in Phase 2";
+
+        // "No remote" is a fact about this folder, not a promise about a future
+        // version: a workspace like this one has no remote and works fine.
+        OverviewRepo.Text = p.HasRemote
+            ? $"{p.RemoteHost} — remote configured"
+            : "No remote — everything here is local";
+
         OverviewTree.Text = p.Dirty ? "dirty — uncommitted changes present" : "clean";
         OverviewCommit.Text = p.RecentCommits.FirstOrDefault()?.Subject ?? "—";
     }
@@ -59,13 +65,47 @@ public sealed partial class ProjectsPage : Page
         ActionsPanel.Visibility = DetailTabs.SelectedIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void ProjectAction_Click(object sender, RoutedEventArgs e)
+    // The two real actions on this page. They open what already exists on disk
+    // through ProjectOpenActions, exactly like the Dashboard card does; nothing
+    // here writes to the repository.
+    private void OpenSolutionButton_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is not string action)
+        var project = Selected;
+        if (project is null)
             return;
 
-        NotWiredInfoBar.Title = $"'{action}' is a placeholder";
-        NotWiredInfoBar.Message = $"BuildService / GitService land in Phase 1 — this will run without the terminal.";
-        NotWiredInfoBar.IsOpen = true;
+        var target = ProjectOpenActions.FindSolutionOrProject(project.Path);
+        if (target is null)
+        {
+            ShowError(
+                "Nothing to open",
+                $"{project.Name} has no solution or project file at its root.");
+            return;
+        }
+
+        if (!ProjectOpenActions.OpenWithDefaultApp(target))
+        {
+            ShowError("Could not open the project", target);
+        }
+    }
+
+    private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        var project = Selected;
+        if (project is null)
+            return;
+
+        if (!ProjectOpenActions.OpenInExplorer(project.Path))
+        {
+            ShowError("Could not open the folder", project.Path);
+        }
+    }
+
+    private void ShowError(string title, string message)
+    {
+        PageInfoBar.Severity = InfoBarSeverity.Error;
+        PageInfoBar.Title = title;
+        PageInfoBar.Message = message;
+        PageInfoBar.IsOpen = true;
     }
 }

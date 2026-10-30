@@ -7,12 +7,15 @@ build/run/commit/tag/push and "new app from template" scaffolding. DevDesk and
 the DevTem-WinUI 3 template live together in
 **`C:\Code\projects\DevEcosystem`**; other folders there are unrelated.
 
-> **Status: Phase 0 complete.** The shell, theme and navigation are real; the
-> **ProjectScanner** reads every repo inside `DevEcosystem` (branch, status,
-> last commits, version sync, remote host) with no network, and cards open
-> repos in Explorer / Visual Studio. Phase 1+ flows are stubbed in place —
-> buttons show an InfoBar instead of running. Scope is tracked in
-> `C:\Code\projects\DevEcosystem\DevDesk\docs\DEVDESK-PLAN.md`.
+> **Status: v0.1.0 "Trustworthy base".** Everything on screen is either real or
+> clearly labelled with the version that will make it real — there are no fake
+> rows, no buttons that look live but only apologise, and no invented data. Today
+> DevDesk scans every repo inside `DevEcosystem` (branch, dirty state, last
+> commits, version, remote) with no network, opens repos in Explorer / Visual
+> Studio, remembers its window and route, keeps one instance per session, and
+> writes a redacted diagnostics bundle. The map is
+> **`docs/DEVDESK-ROADMAP.md`**; each version's work order lives in
+> **`docs/versions/`**.
 
 ## Run it — no terminal (double-click)
 
@@ -37,28 +40,34 @@ dotnet run
 
 - **Theme**: sea-blue accent, light / dark / system, persisted across launches
   (title-bar brightness button or Settings → Appearance).
-- **Navigation**: Dashboard, Projects, Templates, GitHub, Settings,
-  Diagnostics — with an animated (`EntranceNavigationTransitionInfo`) Frame.
-- **Dashboard**: summary cards (projects / clean / attention / remotes) and
-  the project-card grid (branch, status, last commits, version pill, remote
-  and dirty badges) — scanned live from the DevEcosystem folder, never
-  DevDesk itself. **Click a card** to open the repo in Explorer or Visual
-  Studio.
-- **DevDesk**: a dedicated page for this app itself — real repo state read by
-  the scanner (branch, version, commits) and its components (tests, plan doc,
-  scripts, CI workflow), with live "open in Explorer" / "open plan doc"
-  actions.
+- **Navigation**: Dashboard, Projects, Templates, GitHub, DevDesk, Settings,
+  Diagnostics — the last page you were on is reopened next launch.
+- **Window**: size and position are remembered and always restored onto a
+  screen that still exists; minimum 960×600; a second double-click focuses the
+  window that is already open instead of starting another copy.
+- **Dashboard**: summary cards (projects / clean / attention / remotes) and the
+  project-card grid (branch, status, last commits, version pill, remote and
+  dirty badges) — scanned live from the DevEcosystem folder, never DevDesk
+  itself. **Click a card** to open the repo in Explorer or Visual Studio.
+- **Projects**: two-pane list + detail. Overview is real (branch, version,
+  remote, working tree, last commit); the two open buttons work; Commits,
+  Releases and Actions say which version brings them.
+- **DevDesk**: this app's own workspace — real repo state (branch, version,
+  commits) and its components (tests, roadmap, scripts, CI workflow), with
+  "open in Explorer" and "open roadmap".
+- **Diagnostics**: the last 2000 log events of this launch with a level and text
+  filter, follow, copy, and a one-click export bundle
+  (`logs/`, `environment.txt`, `settings.redacted.json`, `manifest.json`).
+  Credentials are redacted on the way to disk and into the bundle.
+- **Settings**: theme, scan roots and ignore list (read-only, what the scanner
+  actually uses), update channel, and a **working** "Check for updates" that
+  reports the real answer — including "not installed" when run from `bin\`.
 - **Loading**: any operation that may take a while (refresh/rescan, repo-state
   check) shows a progress overlay; the launcher shows a progress window while
   a rebuild runs.
-- **Projects**: two-pane list + detail with Overview / Commits / Releases /
-  Actions tabs — all placeholder content.
-- **Templates**: the "new project from template" wizard layout (steps, name &
-  location, git/GitHub/version options, preview).
-- **GitHub**: Actions runs and per-channel releases placeholder panes.
-- **Planned**: build/run/publish, git *write* ops (commit/push/branch), the
-  "new from template" wizard, GitHub API, release wizard, log viewer — see the
-  plan file.
+- **Not yet, and labelled as such**: commit/branch/push (v0.2.0), build / run /
+  publish (v0.3.0), the template wizard (v0.4.0), GitHub runs & releases and
+  the token (v0.5.0), filtering and multiple scan roots (v0.7.0).
 
 ## Tech stack
 
@@ -106,15 +115,20 @@ dotnet tool restore                                # pinned vpk, no global insta
 ```
 MainWindow.xaml(.cs)   # Shell: custom title bar + NavigationView + theme toggle
 App.xaml               # Sea-blue theme dictionaries (light/dark) + shared card style
-Models/ProjectModel.cs # Project / workspace card model + ComponentInfo
-Services/              # LoggingService (Serilog), SettingsService (JSON),
-                       # ThemeService, UpdateService, GitRunner, ProjectScanner
+Models/ProjectModel.cs # Project / workspace card model + CommitInfo + ComponentInfo
+Services/              # ScanEngine, ProjectCatalog, AppServices, PathHygiene,
+                       # GitRunner, ProjectOpenActions, WindowPlacement, Routes,
+                       # SingleInstance, SettingsService, LoggingService, UpdateService
 Pages/                 # Dashboard, Projects, Templates, GitHub, DevDesk (self), Settings, Diagnostics
+ViewModels/            # Dashboard / self / diagnostics state (x:Bind, no code-behind logic)
 Scripts/launch-dev.ps1        # Build-if-needed + launch without a terminal (shortcut target)
 Scripts/make-shortcut.ps1     # Creates the desktop "DevDesk" shortcut
-Scripts/build-and-release.ps1 # Velopack release pipeline (from the template)
+Scripts/build-and-release.ps1 # Velopack release pipeline (the single source of truth)
+Scripts/smoke-ui.ps1          # Visits all 7 pages through UI Automation in an isolated data dir
+Scripts/verify-shell.ps1      # Proves placement, route restore, min size, single instance
 DevDesk.Tests/                # xunit tests — live INSIDE this repo (own project)
-docs/DEVDESK-PLAN.md          # the plan
+docs/DEVDESK-ROADMAP.md       # the map: versions, findings, decisions
+docs/versions/                # per-version work orders + evidence log
 ```
 
 Tests run with `dotnet test DevDesk.Tests -p:Platform=x64` (from this folder).

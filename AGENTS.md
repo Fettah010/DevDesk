@@ -9,13 +9,16 @@ first before making changes.
 `C:\Code\projects` (branch, version, last commits, releases per channel,
 GitHub Actions, build/run) so the terminal is no longer needed.
 
-**Current status: Phase 0 complete.** The shell, sea-blue theme (light/dark),
-navigation and the **ProjectScanner** (git state + versions for every repo in
-the DevEcosystem folder, plus open-in-Explorer / open-in-VS card actions) are
-real and working. Phase 1+ flows (GitService write ops, BuildService,
-GitHubService, TemplateService) are NOT wired yet — their buttons show an
-InfoBar instead. Scope lives in
-`C:\Code\projects\DevEcosystem\DevDesk\docs\DEVDESK-PLAN.md`.
+**Current status: v0.1.0 "Trustworthy base".** The shell, sea-blue theme
+(light/dark), navigation, the **ScanEngine** (git state + versions for every repo
+in the DevEcosystem folder), real open-in-Explorer / open-in-VS actions, window
+placement + single instance, and the Diagnostics log/export pipeline are real and
+working. Everything that is not built yet is **disabled with the version that
+brings it, or an empty state naming it** — no fake rows, no buttons that look
+live but only apologise. Later flows (GitService write ops → v0.2.0, BuildService
+→ v0.3.0, TemplateService → v0.4.0, GitHubService → v0.5.0) are labelled, not
+faked. The map is `docs\DEVDESK-ROADMAP.md`; each version's work order and
+evidence log is in `docs\versions\`.
 
 ## Ecosystem layout (this app does not live alone)
 
@@ -26,14 +29,15 @@ in `C:\Code\projects` are unrelated and must not be touched.
 C:\Code\projects\DevEcosystem\
   DevDesk\              # THIS app (own local git repo)
     DevDesk.Tests\      # xunit tests — inside the DevDesk repo, own project
-    docs\DEVDESK-PLAN.md # the plan
+    docs\DEVDESK-ROADMAP.md  # the map (versions, findings, decisions)
+    docs\versions\      # per-version work orders + evidence log
   DevTem WinUI 3\       # the template (own git repo, remote: Fettah010/winui-3-easy-template)
 ```
 
 When scaffolding "new apps from the template", new projects go next to the
 template inside `DevEcosystem\` (see TemplatesPage default location).
 
-### The scan model (implemented by `Services/ProjectScanner.cs`)
+### The scan model (implemented by `Services/ScanEngine.cs`)
 
 - Scan root = `DevEcosystem`, depth 2 (stop descending once a repo is found).
 - DevDesk is **never** reported as a scanned project — it becomes the self
@@ -43,6 +47,9 @@ template inside `DevEcosystem\` (see TemplatesPage default location).
   `*.sln/*.slnx/*.*proj` marker; hygiene folders (bin/obj/.vs/Releases/…) and
   dot-folders are skipped. Git state is read-only (never fetch/push), so a
   scan is fast, local, and never fails because of the network.
+- One scan per session, shared through `ProjectCatalog` (`AppServices.Catalog`):
+  pages ask for `GetOrRefreshAsync()` and **join** the in-flight scan instead of
+  starting their own (`smoke-ui.ps1` asserts exactly one scan for 7 page visits).
 
 ## Running DevDesk — NO TERMINAL (the shortcut is the point)
 
@@ -91,9 +98,13 @@ dotnet build -c Debug -p:Platform=x64
   project), by design, since "every project owns its folder". The tests
   compile from the same repo without being mixed into the app build
   (`<DefaultItemExcludes>` in `DevDesk.csproj`).
-- They cover pure logic: `Models/ProjectModel.cs`,
-  `Services/ProjectScanner.cs` (built against temp git repos, requires git),
-  `Services/ProjectOpenActions.cs` (marker discovery), `ThemeService`.
+- They cover logic, not pixels: `Models/ProjectModel.cs`, the scan pipeline
+  (`Services/ScanEngine.cs`, `PathHygiene`, `SelfLocator` — built against temp
+  git repos, requires git), `ProjectCatalog` (one scan shared by every page),
+  `ProjectOpenActions` (marker discovery), `WindowPlacement`, `Routes`,
+  `UpdateService` (plus a source-level guard against blocking calls),
+  `SettingsService`/`SettingsMigration`, `LogRedaction`/`LogRingBufferSink`/
+  `DiagnosticsExport`, `ReleaseChannels`, and the version/release-config guards.
 - Run them (the WinUI/XAML compiler needs a platform):
 
 ```powershell
@@ -114,30 +125,42 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `App.xaml.cs` | UI-thread exception logging + background auto-update check (Velopack, skipped when not installed). |
 | `MainWindow.xaml(.cs)` | Mica backdrop, custom title bar, theme-cycle button (left of the title — must never sit under the OS caption buttons), NavigationView → Dashboard/Projects/Templates/GitHub/DevDesk/Settings/Diagnostics. |
 | `Models/ProjectModel.cs` | Project/Workspace card model + `CommitInfo` + `ComponentInfo`. |
-| `Services/ProjectScanner.cs` | **Phase 0 scanner** — walks the scan root (depth 2), detects repos by `.git`/project marker, reads branch, dirty/behind, remote host, last 3 commits, and csproj version (with 3-field sync check). Never lists DevDesk; returns it as the self workspace. |
-| `Services/GitRunner.cs` | Safe git process runner — argument lists only, output redirection, 15s timeout; git failure never throws (exit-code path). |
-| `Services/ProjectOpenActions.cs` | Open-in-Explorer / open-with-default-app (ShellExecute) + solution/project marker finder for cards — all argument-list safe, never throws. |
+| `Services/ScanEngine.cs` | The scanner — walks the scan root (depth 2), detects repos by `.git`/project marker, reads branch, dirty/behind, remote host, last 3 commits, and csproj version (with 3-field sync check). Never lists DevDesk; returns it as the self workspace. |
+| `Services/ProjectCatalog.cs` / `AppServices.cs` | The in-session snapshot: one scan, joined by every page (`GetOrRefreshAsync`); `AppServices` is the service graph for pages with parameterless constructors. |
+| `Services/PathHygiene.cs` / `SelfLocator.cs` | What is never walked (bin/obj/.vs/Logs/worktrees) and how DevDesk finds its own repo. |
+| `Services/GitRunner.cs` | Safe git process runner — argument lists only, output redirection, timeout, cancellation, non-interactive; git failure never throws (exit-code path). |
+| `Services/ProjectOpenActions.cs` | Open-in-Explorer / reveal-in-Explorer / open-with-default-app (ShellExecute) + solution/project marker finder — all argument-list safe, never throws. |
+| `Services/WindowPlacement.cs` / `SingleInstance.cs` / `Routes.cs` | Placement clamped onto a real display; one window per session (second launch focuses the first); the single list of navigation tags. |
 | `Services/ThemeService.cs` | Applies System/Light/Dark to the window root. |
-| `Services/SettingsService.cs` | JSON settings (`%LocalAppData%\DevDesk\settings.json`), theme persisted. |
+| `Services/SettingsService.cs` | JSON settings (`%LocalAppData%\DevDesk\settings.json`, `schemaVersion: 1`), theme / channel / last route / window persisted, unknown keys preserved. |
 | `Services/LoggingService.cs` | Serilog to `%LocalAppData%\DevDesk\Logs\applog-YYYYMMDD.log` (14 days) **plus** an in-memory ring (`LoggingService.Ring`, 2000 events) that Diagnostics reads; `DEVDESK_DATA_DIR` moves both settings and logs. |
-| `Services/UpdateService.cs` / `AppInfo.cs` | Velopack wrapper / version accessors (from the template). |
-| `Pages/*` | Dashboard (cards grid, loading overlay, **click a card → Open in Explorer / Open in VS**), Projects (list + detail tabs), Templates (wizard layout), GitHub (Actions/releases), **DevDesk (the app itself — workspace + components, open-explorer / open-plan actions)**, Settings, Diagnostics (log view). |
+| `Services/LogRedaction.cs` / `RedactingTextFormatter.cs` / `DiagnosticsExport.cs` | Credential redaction on the way to disk and into the zip; the export bundle (`logs/`, `environment.txt`, `settings.redacted.json`, `manifest.json`). |
+| `Services/UpdateService.cs` / `AppInfo.cs` / `ReleaseChannels.cs` | Velopack wrapper (async only — never block the UI thread), version accessors, and the one tag→channel vocabulary. |
+| `Pages/*` | Dashboard (cards grid, loading overlay, **click a card → Open in Explorer / Open in VS**), Projects (list + real overview, open-solution / open-folder, empty states for later tabs), Templates (wizard preview, create disabled until v0.4.0), GitHub (empty states until v0.5.0), **DevDesk (the app itself — workspace + components, open-explorer / open-roadmap)**, Settings, Diagnostics (real log view + export). |
+| `ViewModels/*` | Page state for Dashboard / self / Diagnostics (`x:Bind`); code-behind stays for shell actions only. |
 | `Scripts/launch-dev.ps1` | **Build-if-needed + launch without a terminal (shortcut target); progress window during rebuild.** |
 | `Scripts/make-shortcut.ps1` | **Creates the desktop `DevDesk` shortcut.** |
-| `Scripts/build-and-release.ps1` | Release pipeline (from template; **single source of truth**). |
+| `Scripts/build-and-release.ps1` | Release pipeline (publish → `vpk download` → `vpk pack` → `vpk upload`; **single source of truth**, CI delegates to it). |
+| `Scripts/smoke-ui.ps1` | Visits all 7 destinations through UI Automation in a throw-away `DEVDESK_DATA_DIR`; asserts one catalog scan and no ERR/FTL lines. |
+| `Scripts/verify-shell.ps1` | Proves placement restore, last-route restore, minimum size, remembered navigation and the real update answer against the exe. |
+| `Scripts/capture-page.ps1` | Screenshots one destination for review/evidence. |
 | `.github/workflows/release.yml` | CI release pipeline (tag `v*` / manual dispatch). Useful later: DevDesk drives these for other projects. |
-| `docs/DEVDESK-PLAN.md` | The plan (lives inside DevDesk). |
+| `docs/DEVDESK-ROADMAP.md` | The map: versions, findings, decisions, service boundaries. |
+| `docs/versions/` | Per-version work orders + the evidence log (filled as items land). |
 | `DevDesk.Tests/` | xunit tests (own project, inside this repo). |
 
 ## Versioning & releases
 
-Current version: **0.0.1** — keep `<Version>`, `<AssemblyVersion>`,
-`<FileVersion>` in `DevDesk.csproj` in sync (three fields, always).
+Current version: **0.1.0** (tag `v0.1.0-beta`). Keep `<Version>`,
+`<AssemblyVersion>`, `<FileVersion>` in `DevDesk.csproj` in sync (three fields,
+always) — `Scripts/bump-version.ps1` rewrites them together and the test suite
+fails when they drift.
 
-Release infra is copied from the template and unchanged: tag flow
-(`git tag v0.0.2 && git push origin v0.0.2`) or manual `workflow_dispatch`;
-`Scripts/build-and-release.ps1` is the single source of truth for publish →
-`vpk download` → `vpk pack` → `vpk upload`.
+Release flow: tag (`git tag v0.2.0-beta && git push origin v0.2.0-beta`) or
+manual `workflow_dispatch`; `Scripts/build-and-release.ps1` is the single source
+of truth for publish → `vpk download` → `vpk pack` → `vpk upload`, and CI
+delegates to it. The channel comes from the tag; releases are published, never
+drafts, and `--pre` is never passed.
 
 ## Known gotchas (these have caused real failures)
 
@@ -147,17 +170,19 @@ Release infra is copied from the template and unchanged: tag flow
    at the end. Splitting content around a property element breaks the build.
 2. **Platform is mandatory**: `<Platforms>x86;x64;ARM64</Platforms>` + WinUI
    means builds/tests need `-p:Platform=x64`; AnyCPU fails.
-3. **`ProjectScanner` reads git/fs read-only** — do not make it write (no
+3. **The scan reads git/fs read-only** — do not make it write (no
    fetch/push/commit) or call the network; scans must be instant and safe to
    re-run. Keep the `GitRunner` argument-list + timeout pattern; preserve the
-   `ScannerResult` shape (projects never contain DevDesk, self is separate).
+   `ScannerResult` shape (projects never contain DevDesk, self is separate) and
+   let `ProjectCatalog` own the one scan.
 4. **Version fields out of sync** (template AGENTS) — surface a badge; release
    wizard must rewrite all three together.
-5. **Channel vocabulary** — template CI uses `stable|beta|alpha`, UI uses
-   `stable|beta|dev`. DevDesk's plan defines one source of truth
-   (`stable|beta|dev`). Don't ship releases to a channel no client reads.
-6. **vpk v1.2 CLI**: icon flag is `--icon`, ids are `-u/-v/-p/-e`; check
-   `vpk pack --help` when unsure.
+5. **Channel vocabulary** — `stable|beta|dev`, one source of truth
+   (`Services/ReleaseChannels.cs`); the channel is derived from the tag.
+   `alpha` is retired and refused by name. Don't ship releases to a channel no
+   client reads.
+6. **vpk v1.2 CLI**: icon flag is `--icon`, ids are `-u/-v/-p/-e`; `vpk` has no
+   `--version` (parse the `--help` banner or `dotnet tool list --local`).
 7. **"VS studio projects" has spaces** — any process calls must use argument
    lists, never interpolated shell strings (path-injection safety).
 8. **`PIgen App` is a repo-in-a-folder with 4 projects and NO remote — outside
@@ -167,6 +192,17 @@ Release infra is copied from the template and unchanged: tag flow
    copy-only; never mutate `C:\Code\projects\DevEcosystem\DevTem WinUI 3`.
 10. **Scan hygiene** — skip `bin/obj/node_modules/.vs/Releases/Logs`; scans
     must be incremental so a big `C:\Code\projects` never slows startup.
+11. **Never fake data on screen.** A hardcoded row, an invented run number or a
+    button that only apologises is a lie the user cannot tell apart from a real
+    read. Not-built features get a disabled control with the version that brings
+    it, or an empty state naming that version. `DocsHonestyTests` fails the build
+    on phase-era copy and on the removed sample rows.
+12. **WinUI tooltips do not appear on disabled controls** — a disabled button
+    needs its reason in visible text nearby (and an `AutomationProperties.Name`
+    naming the version) or nobody will ever see why it is off.
+13. **Never block the UI thread on a Task.** `UpdateServiceTests` scans the app
+    source for `.Wait()`/`.Result`/`GetResult()`; a deliberate one must carry a
+    `block-exempt` comment explaining why there is no dispatcher to block.
 
 ## Conventions
 
