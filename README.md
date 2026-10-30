@@ -62,12 +62,17 @@ dotnet run
 
 ## Tech stack
 
-- .NET 10 · WinUI 3 / Microsoft.WindowsAppSDK 1.8 (unpackaged, self-contained)
-- Velopack 1.2 (auto-update skeleton from the template, inactive until installed)
-- Serilog 4 logging; CommunityToolkit (SettingsControls, Segmented, Helpers)
+| Dependency | Version | Job | If removed |
+| --- | --- | --- | --- |
+| .NET + Windows App SDK | `net10.0-windows10.0.19041.0`, **WASDK 2.6.4** (unpackaged, self-contained) | WinUI 3 shell, Mica, title bar | the app does not exist |
+| Windows SDK BuildTools | `10.0.28000.2957` | MSIX/manifest tooling used by Velopack | packaging fails |
+| Velopack | `1.2.161` | installer + self-update | no install/update path (dev builds still run) |
+| Serilog (+ File) | `4.4.0` / `7.0.0` | logging | Diagnostics goes dark |
+| CommunityToolkit.WinUI.* | `8.2.251219` | settings controls, segmented control | two controls re-implemented by hand |
+
 - No external GitHub/git SDK — git is driven through `Services/GitRunner.cs`
-  (argument lists, no shell interpolation); GitHub REST arrives with the
-  services in later phases.
+  (argument lists, no shell interpolation); GitHub REST arrives in 0.5.0.
+- `1.8` is out of servicing (2026-09-24); `2.6.4` is the current stable line.
 
 ## Repo layout
 
