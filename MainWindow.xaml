@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:DevDesk.ViewModels"
     mc:Ignorable="d"
     Title="DevDesk">
 
@@ -61,6 +62,56 @@
                     <FontIcon Glyph="&#xE706;" FontSize="14"/>
                 </Button>
             </StackPanel>
+
+            <!-- What is running, and only what is running (D-0.3.8). The right
+                 margin keeps it clear of the OS caption buttons and is recomputed
+                 from the title bar's real inset, so 200 % scaling does not put a
+                 Stop button under the close button. -->
+            <Grid
+                x:Name="RunningStrip"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                Margin="0,0,150,0"
+                MaxWidth="440"
+                ColumnSpacing="8"
+                Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <FontIcon
+                    x:Name="RunningGlyph"
+                    Glyph="&#xE895;"
+                    FontSize="12"
+                    Foreground="{ThemeResource SeaBlueBrush}"
+                    VerticalAlignment="Center"/>
+                <TextBlock
+                    x:Name="RunningText"
+                    Grid.Column="1"
+                    MaxWidth="260"
+                    TextTrimming="CharacterEllipsis"
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    VerticalAlignment="Center"/>
+                <TextBlock
+                    x:Name="RunningElapsed"
+                    Grid.Column="2"
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    FontFamily="Consolas"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    VerticalAlignment="Center"/>
+                <Button
+                    x:Name="RunningStopButton"
+                    Grid.Column="3"
+                    Click="RunningStopButton_Click"
+                    CornerRadius="8"
+                    Padding="8,4"
+                    AutomationProperties.Name="Stop the running operation"
+                    ToolTipService.ToolTip="Stop the running operation">
+                    <FontIcon Glyph="&#xE71A;" FontSize="11"/>
+                </Button>
+            </Grid>
         </Grid>
 
         <NavigationView
@@ -102,6 +153,18 @@
             </NavigationView.MenuItems>
 
             <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Activity" Tag="activity">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE81C;"/>
+                    </NavigationViewItem.Icon>
+                    <NavigationViewItem.InfoBadge>
+                        <InfoBadge
+                            x:Name="ActivityBadge"
+                            Value="0"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="Operations failed this session"/>
+                    </NavigationViewItem.InfoBadge>
+                </NavigationViewItem>
                 <NavigationViewItem Content="Settings" Tag="settings">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE713;"/>
@@ -113,6 +176,104 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
+
+            <!-- The footer flyout: the last ten runs, one click away from wherever
+                 the user is. The page is the history; this is the glance. -->
+            <NavigationView.PaneFooter>
+                <Button
+                    x:Name="RecentButton"
+                    HorizontalAlignment="Stretch"
+                    Margin="8,4,8,8"
+                    CornerRadius="8"
+                    AutomationProperties.Name="Recent activity"
+                    ToolTipService.ToolTip="The last ten runs">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0" Glyph="&#xE81C;" FontSize="14"/>
+                        <StackPanel Grid.Column="1" Spacing="-2" HorizontalAlignment="Left">
+                            <TextBlock Text="Recent activity" Style="{ThemeResource CaptionTextBlockStyle}" FontWeight="SemiBold"/>
+                            <TextBlock
+                                x:Name="RecentSummary"
+                                Text="No runs yet"
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                    </Grid>
+                    <Button.Flyout>
+                        <Flyout x:Name="RecentFlyout" Placement="Right" Opened="RecentFlyout_Opened">
+                            <StackPanel Spacing="8" MinWidth="360" MaxWidth="460">
+                                <TextBlock Text="Recent activity" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                                <ListView
+                                    x:Name="RecentList"
+                                    SelectionMode="None"
+                                    MaxHeight="340"
+                                    AutomationProperties.Name="The last ten runs">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="MinHeight" Value="0"/>
+                                            <Setter Property="Padding" Value="6,5"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ActivityRow">
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <FontIcon
+                                                    Grid.Column="0"
+                                                    Glyph="{x:Bind Glyph}"
+                                                    FontSize="12"
+                                                    VerticalAlignment="Top"
+                                                    Margin="0,2,0,0"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                                <StackPanel Grid.Column="1" Spacing="0">
+                                                    <TextBlock
+                                                        Text="{x:Bind Title}"
+                                                        TextTrimming="CharacterEllipsis"
+                                                        TextWrapping="NoWrap"/>
+                                                    <TextBlock
+                                                        Text="{x:Bind DetailText}"
+                                                        Style="{ThemeResource CaptionTextBlockStyle}"
+                                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                        TextTrimming="CharacterEllipsis"
+                                                        TextWrapping="NoWrap"/>
+                                                </StackPanel>
+                                                <TextBlock
+                                                    Grid.Column="2"
+                                                    Text="{x:Bind StatusLabel}"
+                                                    Style="{ThemeResource CaptionTextBlockStyle}"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <TextBlock
+                                    x:Name="RecentEmpty"
+                                    Text="Nothing has run yet. Build, run, publish or test a project and it appears here."
+                                    Style="{ThemeResource CaptionTextBlockStyle}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextWrapping="Wrap"
+                                    Visibility="Collapsed"/>
+                                <Button
+                                    Content="Open Activity page"
+                                    Click="OpenActivityButton_Click"
+                                    CornerRadius="8"
+                                    HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </NavigationView.PaneFooter>
 
             <Frame x:Name="ContentFrame"/>
         </NavigationView>

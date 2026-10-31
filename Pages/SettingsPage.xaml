@@ -118,7 +118,7 @@
 
                 <ctk:SettingsCard
                     Header="Update channel"
-                    Description="Which release feed the app updates from. A tag decides the channel of a release: v0.2.0 is stable, v0.2.0-beta is beta, v0.2.0-dev is dev.">
+                    Description="Which release feed the app updates from. A tag decides the channel of a release: v0.3.0 is stable, v0.3.0-beta is beta, v0.3.0-dev is dev.">
                     <ctk:Segmented x:Name="ChannelSegment" SelectionChanged="ChannelSegment_SelectionChanged" SelectedIndex="1">
                         <ctk:SegmentedItem Content="stable"/>
                         <ctk:SegmentedItem Content="beta"/>

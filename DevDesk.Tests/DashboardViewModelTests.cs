@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using DevDesk.Models;
 using DevDesk.Services;
 using DevDesk.ViewModels;
 using Microsoft.UI.Xaml;
@@ -130,6 +132,59 @@ public class DashboardViewModelTests
 
         Assert.Equal("0", viewModel.AttentionCountText);
         Assert.Equal("All projects are healthy.", viewModel.Subtitle);
+    }
+
+    [Fact]
+    public async Task Dashboard_JoinsTheLastRunFromHistoryAndNeverBorrowsANumber()
+    {
+        using var sandbox = new SettingsSandbox();
+        var history = new BuildHistory(sandbox.Directory);
+        history.Add(new BuildRecord(
+            "/tmp/built",
+            "built",
+            OperationKind.Build,
+            OperationStatus.Failed,
+            DateTimeOffset.UnixEpoch,
+            TimeSpan.FromSeconds(2.4),
+            1,
+            "error CS1002: ; expected",
+            null,
+            "Debug",
+            "x64"));
+
+        var engine = new FakeScanEngine();
+        var catalog = new ProjectCatalog(engine);
+        engine.Projects = new[]
+        {
+            ProjectCatalogTests.Project("built"),
+            ProjectCatalogTests.Project("never"),
+        };
+
+        var viewModel = new DashboardViewModel(catalog, history);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        var built = viewModel.Projects.First(card => card.Model.Name == "built");
+        var never = viewModel.Projects.First(card => card.Model.Name == "never");
+
+        Assert.Equal("build failed", built.BuildBadgeText);
+        Assert.Equal(Visibility.Visible, built.FailedVisibility);
+        Assert.Equal(Visibility.Collapsed, built.OkVisibility);
+
+        // A project that has never built says so; it does not inherit "build
+        // failed" from the card next to it (gotcha 16).
+        Assert.Equal("no build yet", never.BuildBadgeText);
+        Assert.Equal(Visibility.Visible, never.MutedVisibility);
+        Assert.Equal(Visibility.Collapsed, never.FailedVisibility);
+    }
+
+    [Fact]
+    public void Dashboard_WithoutAHistoryShowsNoBuildYet()
+    {
+        var catalog = new ProjectCatalog(new FakeScanEngine());
+        var viewModel = new DashboardViewModel(catalog);
+
+        Assert.Empty(viewModel.Projects);
+        Assert.Equal("no build yet", new ProjectCardItem(ProjectCatalogTests.Project("x"), null).BuildBadgeText);
     }
 
     [Fact]

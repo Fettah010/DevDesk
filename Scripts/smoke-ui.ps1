@@ -40,7 +40,7 @@ New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
 $env:DEVDESK_DATA_DIR = $DataDirectory
 $LogDirectory = Join-Path $DataDirectory "Logs"
 
-$Destinations = @("Dashboard", "Projects", "Templates", "GitHub", "DevDesk", "Settings", "Diagnostics")
+$Destinations = @("Dashboard", "Projects", "Templates", "GitHub", "DevDesk", "Settings", "Diagnostics", "Activity")
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes

@@ -9,16 +9,18 @@ build/run/commit/tag/push and "new app from template" scaffolding. DevDesk and
 the DevTem-WinUI 3 template live together in
 **`C:\Code\projects\DevEcosystem`**; other folders there are unrelated.
 
-> **Status: v0.2.0 in progress — Git, safely.** v0.1.0 "Trustworthy base" is
-> published on GitHub. Everything on screen is either real or
+> **Status: v0.3.0 in progress — Build & run cockpit.** v0.1.0 "Trustworthy
+> base" is published on GitHub (v0.2.0 was completed locally and folded into
+> this work; it was never tagged). Everything on screen is either real or
 > clearly labelled with the version that will make it real — there are no fake
 > rows, no buttons that look live but only apologise, and no invented data. Today
 > DevDesk scans every repo inside `DevEcosystem` (branch, dirty state, last
 > commits, version, remote) with no network, opens repos in Explorer / Visual
-> Studio, remembers its window and route, keeps one instance per session, and
-> writes a redacted diagnostics bundle. The map is
-> **`docs/DEVDESK-ROADMAP.md`**; each version's work order lives in
-> **`docs/versions/`**.
+> Studio, remembers its window and route, keeps one instance per session, writes
+> a redacted diagnostics bundle, and builds / runs / publishes / tests any
+> project with a live searchable console, clickable errors and a real build
+> queue. The map is **`docs/DEVDESK-ROADMAP.md`**; each version's work order
+> lives in **`docs/versions/`**.
 
 ## Run it — no terminal (double-click)
 
@@ -43,7 +45,7 @@ dotnet run
 
 - **Theme**: sea-blue accent, light / dark / system, persisted across launches
   (title-bar brightness button or Settings → Appearance).
-- **Navigation**: Dashboard, Projects, Templates, GitHub, DevDesk, Settings,
+- **Navigation**: Dashboard, Projects, Templates, GitHub, DevDesk, Activity, Settings,
   Diagnostics — the last page you were on is reopened next launch.
 - **Window**: size and position are remembered and always restored onto a
   screen that still exists; minimum 960×600; a second double-click focuses the
@@ -57,24 +59,33 @@ dotnet run
   Stage/unstage, commit/amend, fetch, fast-forward pull, push, branch and local
   tag actions show a command preview before running; destructive actions require
   typed confirmation. Conflicts can be inspected, opened in Visual Studio,
-  continued or aborted.
+  continued or aborted. The **Build** tab builds, runs and publishes the
+  selected project with a live console (search, follow-tail, copy, save),
+  clickable MSBuild problems and a persisted "last build" badge.
 - **DevDesk**: this app's own workspace — real repo state (branch, version,
   commits) and its components (tests, roadmap, scripts, CI workflow), with
-  "open in Explorer" and "open roadmap".
+  "open in Explorer", "open roadmap", **Build**, **Run tests** and **Rebuild &
+  relaunch** (which closes the window, lets the launcher rebuild if a source
+  changed, and reopens the new build).
+- **Activity**: every build-family operation of this session plus the stored
+  history — status, duration, exit code, first error, log path — with cancel,
+  retry and open-log. Builds run one at a time; the rest queue and say so. A
+  running operation also appears in the title bar with its elapsed time and a
+  Stop button, and in the footer flyout.
 - **Diagnostics**: the last 2000 log events of this launch with a level and text
   filter, follow, copy, and a one-click export bundle
   (`logs/`, `environment.txt`, `settings.redacted.json`, `manifest.json`).
   Credentials are redacted on the way to disk and into the bundle. A
   **Performance** card shows the measured numbers — startup marks (window shown,
-  first snapshot), last scan, last update check, last settings write and working
-  set — each beside the budget it is compared with.
+  first snapshot), last scan, last update check, last settings write, build
+  duration and working set — each beside the budget it is compared with.
 - **Settings**: theme, scan roots and ignore list (read-only, what the scanner
   actually uses), update channel, and a **working** "Check for updates" that
   reports the real answer — including "not installed" when run from `bin\`.
 - **Loading**: any operation that may take a while (refresh/rescan, repo-state
   check) shows a progress overlay; the launcher shows a progress window while
   a rebuild runs.
-- **Not yet, and labelled as such**: build / run / publish (v0.3.0), the template
+- **Not yet, and labelled as such**: the template
   wizard (v0.4.0), GitHub runs & releases and
   the token (v0.5.0), filtering and multiple scan roots (v0.7.0).
 

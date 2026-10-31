@@ -6,7 +6,16 @@
 #    the user never stares at a frozen desktop.
 #
 # Wire this to a desktop shortcut (see make-shortcut.ps1).
+#
+# "Rebuild & relaunch" in the app calls this same script with
+# -WaitForProcessId <pid>: the running app cannot rebuild its own locked
+# exe/dll, so the launcher waits for that pid to exit first, then builds and
+# starts the app through the normal flow.
 # ------------------------------------------------------------------------------
+
+param(
+    [int]$WaitForProcessId = 0
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -65,6 +74,23 @@ function Start-App {
         Start-Sleep -Seconds 3
         exit 1
     }
+}
+
+# "Rebuild & relaunch" (v0.3.0): the app starts this script and closes. Wait for
+# the old window to disappear before touching bin\ — the running exe and dll are
+# locked, so a build started any earlier fails with MSB3027. A pid that never
+# exits ends the relaunch instead of stacking a second window (bounded: 30 s).
+if ($WaitForProcessId -gt 0) {
+    $previous = Get-Process -Id $WaitForProcessId -ErrorAction SilentlyContinue
+    if ($null -ne $previous) {
+        Trace-Log "relaunch: waiting for pid $WaitForProcessId to exit"
+        if (-not $previous.WaitForExit(30000)) {
+            Trace-Log "relaunch: pid $WaitForProcessId still running after 30s - nothing started"
+            exit 2
+        }
+    }
+
+    Trace-Log "relaunch: pid $WaitForProcessId is gone"
 }
 
 # Runs `dotnet build` in a background job (robust exit code + no pipe deadlock)

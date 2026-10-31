@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -17,9 +18,10 @@ namespace DevDesk.ViewModels;
 public sealed partial class DashboardViewModel : ViewModelBase
 {
     private readonly ProjectCatalog _catalog;
+    private readonly BuildHistory? _history;
 
     [ObservableProperty]
-    public partial IReadOnlyList<ProjectModel> Projects { get; set; }
+    public partial IReadOnlyList<ProjectCardItem> Projects { get; set; }
 
     [ObservableProperty]
     public partial string ProjectCountText { get; set; }
@@ -50,11 +52,12 @@ public sealed partial class DashboardViewModel : ViewModelBase
 
     private readonly IProgress<ScanProgress> _progress;
 
-    public DashboardViewModel(ProjectCatalog catalog)
+    public DashboardViewModel(ProjectCatalog catalog, BuildHistory? history = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        _history = history;
 
-        Projects = Array.Empty<ProjectModel>();
+        Projects = Array.Empty<ProjectCardItem>();
         ProjectCountText = "0";
         CleanCountText = "0";
         AttentionCountText = "0";
@@ -104,7 +107,9 @@ public sealed partial class DashboardViewModel : ViewModelBase
 
     private void Apply(CatalogSnapshot snapshot)
     {
-        Projects = snapshot.Projects;
+        Projects = snapshot.Projects
+            .Select(project => new ProjectCardItem(project, _history?.LastFor(project.Path)))
+            .ToList();
         ProjectCountText = snapshot.Projects.Count.ToString();
         CleanCountText = snapshot.CleanCount.ToString();
         AttentionCountText = snapshot.AttentionCount.ToString();

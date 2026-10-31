@@ -22,10 +22,13 @@ public static class Routes
     public const string Settings = "settings";
     public const string Diagnostics = "diagnostics";
 
+    /// <summary>Everything DevDesk has run: the queue now, plus the runs history kept.</summary>
+    public const string Activity = "activity";
+
     /// <summary>Every destination, in the order the navigation view shows them.</summary>
     public static IReadOnlyList<string> All { get; } = new[]
     {
-        Dashboard, Projects, Templates, GitHub, Self, Settings, Diagnostics,
+        Dashboard, Projects, Templates, GitHub, Self, Settings, Diagnostics, Activity,
     };
 
     public static string Default => Dashboard;

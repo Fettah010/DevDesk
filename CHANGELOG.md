@@ -15,6 +15,33 @@ allowed; the tag suffix (`-beta`, `-dev`) selects the release channel.
   `InformationalVersion` move together via `Scripts/bump-version.ps1`.
 - `LICENSE` (MIT) and this changelog.
 
+## [0.3.0-beta] — unreleased
+
+### Added
+
+- Build / run / publish / test any project in the ecosystem from the Projects
+  **Build** tab: argument-list `dotnet` processes, one build at a time (the rest
+  queue), exe launch with a `dotnet run` fallback, publish path read from the
+  real output line, and "open output folder".
+- A live log console: search with match count, follow-tail, wrap, copy, save,
+  ANSI/`\r` handling, and a bounded 20,000-line window over a complete log file.
+- MSBuild problems parsed into a clickable list (severity, code, file, line,
+  column); double-click opens the file at the line.
+- Activity center: an Activity page (8th route), footer flyout with the last ten
+  runs, title-bar running strip with elapsed time and Stop, cancel / retry /
+  open log, and a failure badge.
+- Persisted build history (ring of 200) behind the "last build" badges on the
+  Dashboard cards and the Projects header; a never-built project shows `—`.
+- DevDesk's own page builds itself, runs the real test suite, and offers
+  **Rebuild & relaunch** (the launcher waits for the old window, rebuilds only
+  if a source changed, then reopens through the single-instance flow).
+- Build timings joined the performance instrumentation and the Diagnostics card.
+
+### Changed
+
+- `Routes` gains `activity`; `smoke-ui.ps1` visits 8 destinations.
+- Settings' channel example now quotes the current version.
+
 ## [0.2.0-beta] — unreleased
 
 ### Added

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using DevDesk.Services;
 
@@ -77,4 +78,15 @@ public sealed class AppSettings
     public DiagnosticsSettings Diagnostics { get; set; } = new();
 
     public FeatureSettings Features { get; set; } = new();
+
+    /// <summary>Build defaults for every project (0.3.0).</summary>
+    public BuildSettings Build { get; set; } = new();
+
+    /// <summary>
+    /// Per-project build overrides keyed by the repository's full path. The
+    /// comparer makes a differently-cased path resolve to the same entry, which is
+    /// how Windows paths behave everywhere else in the app.
+    /// </summary>
+    public Dictionary<string, BuildProfileSettings> BuildProfiles { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 }

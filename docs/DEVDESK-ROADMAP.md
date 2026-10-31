@@ -1,9 +1,10 @@
 # DevDesk — Roadmap v0.1.0 → v1.0.0
 
 > **Status: ACTIVE ROADMAP.** This document records the initial plan and baseline
-> from 2026-10-30. v0.1.0 is published; v0.2.0 is in progress under
-> `docs/versions/V0.2.0.md`. This file remains the map; each release is implemented
-> from its own work order (see §10).
+> from 2026-10-30. v0.1.0-beta is the last published release; v0.2.0 was
+> implemented locally and folded into v0.3.0, which is implemented under
+> `docs/versions/V0.3.0.md` and not yet released. This file remains the map;
+> each release is implemented from its own work order (see §10).
 >
 > **Supersedes:** `docs/DEVDESK-PLAN.md` (the Phase-0 plan; it is deleted in the
 > working tree at the time of writing and can be recovered with

@@ -67,12 +67,14 @@ public sealed class PerfCounters
     private long _scans;
     private long _updateChecks;
     private long _settingsWrites;
+    private long _builds;
     private long _failures;
 
     private long _lastScanMs = NotMeasured;
     private long _lastScanProjects = NotMeasured;
     private long _lastUpdateCheckMs = NotMeasured;
     private long _lastSettingsWriteMs = NotMeasured;
+    private long _lastBuildMs = NotMeasured;
 
     /// <summary>Scans started, including the ones that failed or were cancelled.</summary>
     public long Scans => Interlocked.Read(ref _scans);
@@ -80,6 +82,9 @@ public sealed class PerfCounters
     public long UpdateChecks => Interlocked.Read(ref _updateChecks);
 
     public long SettingsWrites => Interlocked.Read(ref _settingsWrites);
+
+    /// <summary>Build/run/publish/test processes that finished, cancelled ones included.</summary>
+    public long Builds => Interlocked.Read(ref _builds);
 
     /// <summary>Operations that ended badly. Must stay 0 on a healthy run.</summary>
     public long Failures => Interlocked.Read(ref _failures);
@@ -100,6 +105,9 @@ public sealed class PerfCounters
     public TimeSpan? LastUpdateCheck => ToDuration(Interlocked.Read(ref _lastUpdateCheckMs));
 
     public TimeSpan? LastSettingsWrite => ToDuration(Interlocked.Read(ref _lastSettingsWriteMs));
+
+    /// <summary>The last finished build-family process, or null when none has run.</summary>
+    public TimeSpan? LastBuild => ToDuration(Interlocked.Read(ref _lastBuildMs));
 
     /// <summary>Resident memory of this process (M5's 300 MB is the 100-repo target).</summary>
     public long WorkingSetBytes => Environment.WorkingSet;
@@ -142,6 +150,22 @@ public sealed class PerfCounters
 
     /// <summary>Counts a failure that has no duration of its own.</summary>
     public void RecordFailure() => Interlocked.Increment(ref _failures);
+
+    /// <summary>
+    /// Records one build-family process. A cancelled build is counted but not
+    /// timed: the card answers "how long does a build take here", and a build the
+    /// user stopped after 300 ms says nothing about the tool.
+    /// </summary>
+    public void RecordBuild(TimeSpan elapsed, PerfOutcome outcome)
+    {
+        Interlocked.Increment(ref _builds);
+        CountIfFailed(outcome);
+
+        if (outcome != PerfOutcome.Skipped)
+        {
+            Interlocked.Exchange(ref _lastBuildMs, ToMilliseconds(elapsed));
+        }
+    }
 
     /// <summary>
     /// "380 ms", "1.24 s", "0.4 ms", "2m 05s" — invariant culture, so a machine

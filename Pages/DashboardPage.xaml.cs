@@ -17,19 +17,20 @@ public sealed partial class DashboardPage : Page
 
     public DashboardPage()
     {
-        ViewModel = new DashboardViewModel(AppServices.Catalog);
+        ViewModel = new DashboardViewModel(AppServices.Catalog, AppServices.Activity.History);
         this.InitializeComponent();
         _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
     private void ProjectsGrid_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not ProjectModel project)
+        if (e.ClickedItem is not ProjectCardItem card)
         {
             return;
         }
 
-        if (ProjectsGrid.ContainerFromItem(project) is not FrameworkElement anchor)
+        var project = card.Model;
+        if (ProjectsGrid.ContainerFromItem(card) is not FrameworkElement anchor)
         {
             return;
         }

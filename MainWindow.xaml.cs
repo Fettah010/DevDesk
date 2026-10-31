@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -9,12 +10,14 @@ using Microsoft.UI.Xaml.Media.Animation;
 using Windows.Graphics;
 using DevDesk.Pages;
 using DevDesk.Services;
+using DevDesk.ViewModels;
 
 namespace DevDesk;
 
 public sealed partial class MainWindow : Window
 {
     private readonly DispatcherQueueTimer _placementTimer;
+    private readonly DispatcherQueueTimer _activityTimer;
     private bool _placementRestored;
 
     public MainWindow()
@@ -49,6 +52,18 @@ public sealed partial class MainWindow : Window
         _placementTimer.Interval = TimeSpan.FromMilliseconds(500);
         _placementTimer.IsRepeating = false;
         _placementTimer.Tick += PlacementTimer_Tick;
+
+        // The running strip reads the centre's clock, never a second stopwatch:
+        // the elapsed time on the title bar and the duration in Activity are the
+        // same measurement (gotcha 15).
+        _activityTimer = DispatcherQueue.CreateTimer();
+        _activityTimer.Interval = TimeSpan.FromSeconds(1);
+        _activityTimer.IsRepeating = true;
+        _activityTimer.Tick += (_, _) => UpdateRunningElapsed();
+
+        AppServices.Activity.Changed += Activity_Changed;
+        RefreshActivitySurfaces();
+        UpdateTitleBarInset();
 
         AppWindow.Changed += AppWindow_Changed;
         Closed += MainWindow_Closed;
@@ -150,6 +165,7 @@ public sealed partial class MainWindow : Window
         Routes.Self => typeof(DevDeskPage),
         Routes.Settings => typeof(SettingsPage),
         Routes.Diagnostics => typeof(DiagnosticsPage),
+        Routes.Activity => typeof(ActivityPage),
         _ => typeof(DashboardPage),
     };
 
@@ -179,12 +195,119 @@ public sealed partial class MainWindow : Window
         if (args.InvokedItemContainer?.Tag is not string tag)
             return;
 
+        Navigate(tag);
+    }
+
+    private void Navigate(string tag)
+    {
         ContentFrame.Navigate(PageFor(tag), null, new EntranceNavigationTransitionInfo());
         SettingsService.Current.LastRoute = tag;
+        SelectNavigationItem(tag);
+    }
+
+    // -------------------------------------------------------------------------
+    // Activity surfaces (W-0.3.6): the title bar says what is running, the
+    // footer badge counts this session's failures, and the flyout shows the last
+    // ten. None of them keeps its own copy of the state: they read the centre.
+    // -------------------------------------------------------------------------
+
+    private void Activity_Changed(object? sender, EventArgs e) =>
+        DispatcherQueue.TryEnqueue(RefreshActivitySurfaces);
+
+    private void RefreshActivitySurfaces()
+    {
+        var running = AppServices.Activity.Running;
+
+        if (running is null)
+        {
+            RunningStrip.Visibility = Visibility.Collapsed;
+            RunningElapsed.Text = string.Empty;
+            _activityTimer.Stop();
+        }
+        else
+        {
+            RunningStrip.Visibility = Visibility.Visible;
+            RunningGlyph.Glyph = running.Kind switch
+            {
+                Models.OperationKind.Run => "\uE768",
+                Models.OperationKind.Publish => "\uE7B8",
+                Models.OperationKind.Test => "\uE9D9",
+                _ => "\uE756",
+            };
+            RunningText.Text = $"{running.KindLabel.ToLowerInvariant()} {running.ProjectName}";
+            UpdateRunningElapsed();
+
+            if (!_activityTimer.IsRunning)
+            {
+                _activityTimer.Start();
+            }
+        }
+
+        var failures = AppServices.Activity.FailureCount;
+        ActivityBadge.Value = failures;
+        ActivityBadge.Visibility = failures > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        var latest = AppServices.Activity.Operations.FirstOrDefault();
+        RecentSummary.Text = latest is null
+            ? "No runs yet"
+            : $"{latest.Title} · {latest.StatusLabel}";
+    }
+
+    private void UpdateRunningElapsed()
+    {
+        var running = AppServices.Activity.Running;
+        if (running?.StartedAt is not { } started)
+        {
+            RunningElapsed.Text = string.Empty;
+            return;
+        }
+
+        RunningElapsed.Text = PerfCounters.FormatDuration(AppServices.Activity.Time.GetUtcNow() - started);
+    }
+
+    private void RunningStopButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (AppServices.Activity.Running is { } running)
+        {
+            AppServices.Activity.Cancel(running.Id);
+        }
+    }
+
+    private void RecentFlyout_Opened(object? sender, object e)
+    {
+        var viewModel = new ActivityViewModel(AppServices.Activity);
+        viewModel.Load();
+
+        var rows = viewModel.Rows.Take(10).ToList();
+        RecentList.ItemsSource = rows;
+        RecentList.Visibility = rows.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        RecentEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OpenActivityButton_Click(object sender, RoutedEventArgs e)
+    {
+        RecentFlyout.Hide();
+        Navigate(Routes.Activity);
+    }
+
+    /// <summary>Keeps the running strip clear of the caption buttons at any scale.</summary>
+    private void UpdateTitleBarInset()
+    {
+        try
+        {
+            var inset = AppWindow.TitleBar.RightInset;
+            RunningStrip.Margin = new Thickness(0, 0, Math.Max(140, inset + 12), 0);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+            // The default margin is still clear of the buttons on a standard title bar.
+        }
     }
 
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        UpdateTitleBarInset();
+
         if (!_placementRestored || (!args.DidPositionChange && !args.DidSizeChange))
         {
             return;
@@ -202,6 +325,9 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        AppServices.Activity.Changed -= Activity_Changed;
+        _activityTimer.Stop();
+
         // Flush the pending debounce: the last resize is often the one that counts.
         _placementTimer.Stop();
         SavePlacement();

@@ -34,6 +34,8 @@ public static class SettingsProjection
         LastRoute = GetString(root, "lastRoute", "dashboard"),
         Diagnostics = ReadDiagnostics(root["diagnostics"] as JsonObject),
         Features = ReadFeatures(root["features"] as JsonObject),
+        Build = ReadBuild(root["build"] as JsonObject),
+        BuildProfiles = ReadBuildProfiles(root["buildProfiles"] as JsonObject),
     };
 
     /// <summary>
@@ -57,6 +59,8 @@ public static class SettingsProjection
         target["lastRoute"] = settings.LastRoute;
         target["diagnostics"] = WriteDiagnostics(settings.Diagnostics, target["diagnostics"] as JsonObject);
         target["features"] = WriteFeatures(settings.Features, target["features"] as JsonObject);
+        target["build"] = WriteBuild(settings.Build, target["build"] as JsonObject);
+        target["buildProfiles"] = WriteBuildProfiles(settings.BuildProfiles, target["buildProfiles"] as JsonObject);
 
         return target;
     }
@@ -174,6 +178,150 @@ public static class SettingsProjection
         return target;
     }
 
+    private static BuildSettings ReadBuild(JsonObject? obj) => obj is null
+        ? new BuildSettings()
+        : new BuildSettings
+        {
+            Configuration = GetString(obj, "configuration", BuildProfileResolver.DefaultConfiguration),
+            Platform = BuildProfileResolver.NormalizePlatform(GetString(obj, "platform", "x64")),
+            NoRestore = GetBool(obj, "noRestore", false),
+            FollowTail = GetBool(obj, "followTail", true),
+            WrapLines = GetBool(obj, "wrapLines", false),
+            HistoryLimit = Math.Clamp(
+                GetInt(obj, "historyLimit", BuildSettings.DefaultHistoryLimit),
+                1,
+                2000),
+        };
+
+    private static JsonObject WriteBuild(BuildSettings build, JsonObject? existing)
+    {
+        var target = existing is null ? new JsonObject() : (JsonObject)existing.DeepClone();
+        target["configuration"] = build.Configuration;
+        target["platform"] = build.Platform;
+        target["noRestore"] = build.NoRestore;
+        target["followTail"] = build.FollowTail;
+        target["wrapLines"] = build.WrapLines;
+        target["historyLimit"] = build.HistoryLimit;
+        return target;
+    }
+
+    /// <summary>
+    /// Keys are normalised on read (full path, no trailing separator) so a
+    /// hand-edited <c>C:/Code/x/</c> and the scanner's <c>C:\Code\x</c> are one
+    /// entry. An unreadable key is dropped rather than kept as a phantom project.
+    /// </summary>
+    private static Dictionary<string, BuildProfileSettings> ReadBuildProfiles(JsonObject? obj)
+    {
+        var profiles = new Dictionary<string, BuildProfileSettings>(StringComparer.OrdinalIgnoreCase);
+
+        if (obj is null)
+        {
+            return profiles;
+        }
+
+        foreach (var pair in obj)
+        {
+            if (pair.Value is not JsonObject entry)
+            {
+                continue;
+            }
+
+            var key = NormalizePathKey(pair.Key);
+            if (key.Length == 0)
+            {
+                continue;
+            }
+
+            profiles[key] = new BuildProfileSettings
+            {
+                Configuration = GetStringOrNull(entry, "configuration"),
+                Platform = GetStringOrNull(entry, "platform"),
+                Target = GetStringOrNull(entry, "target"),
+                ExtraArgs = GetString(entry, "extraArgs", string.Empty),
+                NoRestore = GetBoolOrNull(entry, "noRestore"),
+            };
+        }
+
+        return profiles;
+    }
+
+    private static JsonObject WriteBuildProfiles(
+        Dictionary<string, BuildProfileSettings> profiles,
+        JsonObject? existing)
+    {
+        var target = new JsonObject();
+
+        foreach (var pair in profiles)
+        {
+            var item = existing is not null
+                && existing.TryGetPropertyValue(pair.Key, out var node)
+                && node is JsonObject previous
+                    ? (JsonObject)previous.DeepClone()
+                    : new JsonObject();
+
+            if (pair.Value.Configuration is { } configuration)
+            {
+                item["configuration"] = configuration;
+            }
+            else
+            {
+                item.Remove("configuration");
+            }
+
+            if (pair.Value.Platform is { } platform)
+            {
+                item["platform"] = platform;
+            }
+            else
+            {
+                item.Remove("platform");
+            }
+
+            if (pair.Value.Target is { } buildTarget)
+            {
+                item["target"] = buildTarget;
+            }
+            else
+            {
+                item.Remove("target");
+            }
+
+            item["extraArgs"] = pair.Value.ExtraArgs;
+
+            if (pair.Value.NoRestore is { } noRestore)
+            {
+                item["noRestore"] = noRestore;
+            }
+            else
+            {
+                item.Remove("noRestore");
+            }
+
+            target[pair.Key] = item;
+        }
+
+        return target;
+    }
+
+    private static string NormalizePathKey(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            return System.IO.Path.GetFullPath(path).TrimEnd(
+                System.IO.Path.DirectorySeparatorChar,
+                System.IO.Path.AltDirectorySeparatorChar);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or System.IO.PathTooLongException)
+        {
+            return string.Empty;
+        }
+    }
+
     private static string GetString(JsonObject obj, string key, string fallback) =>
         obj.TryGetPropertyValue(key, out var node)
         && node is JsonValue value
@@ -195,4 +343,20 @@ public static class SettingsProjection
         && value.TryGetValue<bool>(out var flag)
             ? flag
             : fallback;
+
+    /// <summary>Absent, blank or the wrong type is null ("inherit"), never an empty string.</summary>
+    private static string? GetStringOrNull(JsonObject obj, string key) =>
+        obj.TryGetPropertyValue(key, out var node)
+        && node is JsonValue value
+        && value.TryGetValue<string>(out var text)
+        && !string.IsNullOrWhiteSpace(text)
+            ? text.Trim()
+            : null;
+
+    private static bool? GetBoolOrNull(JsonObject obj, string key) =>
+        obj.TryGetPropertyValue(key, out var node)
+        && node is JsonValue value
+        && value.TryGetValue<bool>(out var flag)
+            ? flag
+            : null;
 }

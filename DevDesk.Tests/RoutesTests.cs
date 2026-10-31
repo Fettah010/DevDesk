@@ -18,6 +18,7 @@ public class RoutesTests
     [InlineData("self")]
     [InlineData("settings")]
     [InlineData("diagnostics")]
+    [InlineData("activity")]
     public void Routes_EveryKnownTagSurvivesTheRoundTrip(string tag)
     {
         Assert.True(Routes.IsKnown(tag));
@@ -29,7 +30,7 @@ public class RoutesTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("activity")]
+    [InlineData("releases")] // a future route this build does not know
     [InlineData("Dashboard ")] // trimmed, and matching is case-insensitive
     public void Routes_UnknownTagFallsBackToDashboard(string? tag)
     {

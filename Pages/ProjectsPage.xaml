@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:DevDesk.Models"
+    xmlns:controls="using:DevDesk.Controls"
     xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
@@ -99,6 +100,27 @@
                             VerticalAlignment="Center">
                             <TextBlock Text="Workspace" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </Border>
+                        <!-- Last run from build-history.json (W-0.3.7): the same
+                             fact the Dashboard card shows, in the same words. -->
+                        <Border
+                            CornerRadius="4"
+                            Padding="6,1"
+                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <FontIcon
+                                    x:Name="HeaderBuildGlyph"
+                                    Glyph="&#xE823;"
+                                    FontSize="10"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                <TextBlock
+                                    x:Name="HeaderBuildBadge"
+                                    Text="no build yet"
+                                    FontSize="10"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                     <TextBlock
                         x:Name="DetailPath"
@@ -107,35 +129,76 @@
                         TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 
-                <!-- Open in VS / Explorer work today; build, run and publish are
-                     disabled until 0.3.0, with the reason stated below the row. -->
+                <!-- Build / Run / Stop / Publish are real as of 0.3.0; the
+                     profile flyout states the exact command before it runs. -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Button
+                        x:Name="BuildButton"
                         Style="{ThemeResource AccentButtonStyle}"
                         CornerRadius="8"
-                        Tag="build"
-                        IsEnabled="False"
-                        AutomationProperties.Name="Build (arrives in v0.3.0)"
-                        ToolTipService.ToolTip="Build arrives in v0.3.0">
+                        Click="BuildButton_Click"
+                        AutomationProperties.Name="Build this project"
+                        ToolTipService.ToolTip="Build this project">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <FontIcon Glyph="&#xE756;" FontSize="14"/>
                             <TextBlock Text="Build"/>
                         </StackPanel>
                     </Button>
                     <Button
+                        x:Name="ProfileButton"
                         CornerRadius="8"
-                        Tag="run"
-                        IsEnabled="False"
-                        AutomationProperties.Name="Run (arrives in v0.3.0)"
-                        ToolTipService.ToolTip="Run arrives in v0.3.0">
+                        AutomationProperties.Name="Build profile"
+                        ToolTipService.ToolTip="Configuration, platform and extra arguments">
+                        <FontIcon Glyph="&#xE70D;" FontSize="12"/>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <StackPanel Spacing="10" MinWidth="300">
+                                    <TextBlock Text="Build profile" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                                    <ComboBox x:Name="ConfigurationBox" Header="Configuration" HorizontalAlignment="Stretch"
+                                              SelectionChanged="ProfileField_Changed">
+                                        <ComboBoxItem Content="Debug"/>
+                                        <ComboBoxItem Content="Release"/>
+                                    </ComboBox>
+                                    <ComboBox x:Name="PlatformBox" Header="Platform" HorizontalAlignment="Stretch"
+                                              SelectionChanged="ProfileField_Changed">
+                                        <ComboBoxItem Content="x64"/>
+                                        <ComboBoxItem Content="x86"/>
+                                        <ComboBoxItem Content="ARM64"/>
+                                    </ComboBox>
+                                    <TextBlock x:Name="PlatformNote" Visibility="Collapsed" TextWrapping="Wrap"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    <CheckBox x:Name="NoRestoreBox" Content="Skip restore (--no-restore)" Checked="ProfileField_Changed" Unchecked="ProfileField_Changed"/>
+                                    <TextBlock Text="Command preview" Style="{ThemeResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                    <TextBlock x:Name="ProfileCommand" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"/>
+                                    <Button Content="Save for this project" Click="SaveProfileButton_Click" CornerRadius="8"/>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button
+                        x:Name="RunButton"
+                        CornerRadius="8"
+                        Click="RunButton_Click"
+                        AutomationProperties.Name="Run this project"
+                        ToolTipService.ToolTip="Build, then start the application">
                         <FontIcon Glyph="&#xE768;" FontSize="14"/>
                     </Button>
                     <Button
+                        x:Name="StopButton"
                         CornerRadius="8"
-                        Tag="publish"
-                        IsEnabled="False"
-                        AutomationProperties.Name="Publish (arrives in v0.3.0)"
-                        ToolTipService.ToolTip="Publish arrives in v0.3.0">
+                        Visibility="Collapsed"
+                        Click="StopButton_Click"
+                        AutomationProperties.Name="Stop the running build or app">
+                        <FontIcon Glyph="&#xE71A;" FontSize="14"/>
+                    </Button>
+                    <Button
+                        x:Name="PublishButton"
+                        CornerRadius="8"
+                        Click="PublishButton_Click"
+                        AutomationProperties.Name="Publish this project"
+                        ToolTipService.ToolTip="dotnet publish — reviewed before it runs">
                         <FontIcon Glyph="&#xE7B8;" FontSize="14"/>
                     </Button>
                     <Button
@@ -158,10 +221,11 @@
             </Grid>
 
             <TextBlock
+                x:Name="BuildStatusLine"
                 Grid.Row="1"
-                Text="Build, run and publish the selected project arrive in v0.3.0 — the buttons stay disabled until then."
+                TextWrapping="Wrap"
                 Style="{ThemeResource CaptionTextBlockStyle}"
-                Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
             <InfoBar x:Name="PageInfoBar" Grid.Row="2" Severity="Error" IsOpen="False" IsClosable="True"/>
 
@@ -170,6 +234,7 @@
                 <ctk:SegmentedItem Content="Changes"/>
                 <ctk:SegmentedItem Content="Commits"/>
                 <ctk:SegmentedItem Content="Branches"/>
+                <ctk:SegmentedItem Content="Build"/>
             </ctk:Segmented>
 
             <Grid Grid.Row="4" Margin="0,4,0,0" RowSpacing="8">
@@ -320,6 +385,87 @@
                     <TextBlock x:Name="TagsEmpty" Text="No local tags." Visibility="Collapsed"
                                Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>
+
+                <Grid x:Name="BuildPanel" Grid.Row="2" Visibility="Collapsed" RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock
+                        x:Name="BuildSummary"
+                        Text="No build has run in this session."
+                        TextWrapping="Wrap"
+                        Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+
+                    <controls:BuildConsole x:Name="BuildOutput" Grid.Row="1" MinHeight="220"/>
+
+                    <StackPanel Grid.Row="2" Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Problems" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock x:Name="ProblemCount" VerticalAlignment="Center"
+                                       Style="{ThemeResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
+                        <ListView
+                            x:Name="ProblemsList"
+                            SelectionMode="Single"
+                            MaxHeight="200"
+                            DoubleTapped="ProblemsList_DoubleTapped"
+                            AutomationProperties.Name="Build problems">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:BuildProblem">
+                                    <Grid ColumnSpacing="8" Padding="2,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Grid.Column="0" Glyph="{x:Bind Glyph}" FontSize="12"
+                                                  VerticalAlignment="Top" Margin="0,3,0,0"
+                                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <StackPanel Grid.Column="1" Spacing="1">
+                                            <TextBlock Text="{x:Bind Message}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{x:Bind Location}" FontFamily="Consolas" FontSize="11"
+                                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{x:Bind SeverityLabel}" VerticalAlignment="Center"
+                                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                        <Button Grid.Column="3" Content="Copy" CornerRadius="8" Padding="8,2"
+                                                Tag="{x:Bind ToDiagnosticText()}"
+                                                Click="CopyProblem_Click"
+                                                AutomationProperties.Name="Copy this problem"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="ProblemsEmpty"
+                                   Text="No problems reported. Errors and warnings appear here with their file and line — double-click one to open it."
+                                   TextWrapping="Wrap"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="3" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="OpenBuildLogButton" Content="Open log" Click="OpenBuildLogButton_Click"
+                                IsEnabled="False" CornerRadius="8"/>
+                        <Button x:Name="OpenLogFolderButton" Grid.Column="1" Content="Open log folder"
+                                Click="OpenLogFolderButton_Click" IsEnabled="False" CornerRadius="8"/>
+                        <TextBlock x:Name="BuildHint" Grid.Column="2" VerticalAlignment="Center"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                   TextWrapping="Wrap"/>
+                    </Grid>
+                </Grid>
 
                 <StackPanel x:Name="OperationStatus" Grid.Row="1" Visibility="Collapsed" Orientation="Horizontal" Spacing="8">
                     <ProgressRing x:Name="OperationProgress" Width="18" Height="18" IsActive="True"/>

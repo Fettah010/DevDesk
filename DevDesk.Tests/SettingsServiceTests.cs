@@ -162,7 +162,7 @@ public class SettingsServiceTests
         Assert.Equal(Routes.Projects, service.LastRoute);
 
         // A route this build does not have (an old or a newer one) is not stored.
-        service.LastRoute = "activity";
+        service.LastRoute = "releases";
         Assert.Equal(Routes.Dashboard, service.LastRoute);
         Assert.Equal("dashboard", sandbox.ReadJson()["lastRoute"]!.GetValue<string>());
 

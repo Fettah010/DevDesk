@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using System.Threading;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using DevDesk.Models;
 using DevDesk.Services;
 
@@ -16,6 +18,7 @@ namespace DevDesk.Pages;
 public sealed partial class ProjectsPage : Page
 {
     private readonly GitService _git = new();
+    private readonly BuildService _builds = AppServices.Builds;
     private CancellationTokenSource? _detailsCancellation;
     private CancellationTokenSource? _operationCancellation;
     private bool _operationRunning;
@@ -26,6 +29,11 @@ public sealed partial class ProjectsPage : Page
     private GitRepositoryStatus? _latestStatus;
     private IReadOnlyList<CommitInfo>? _latestHistory;
     private IReadOnlyList<GitRemoteInfo>? _latestRemotes;
+    private BuildProfileResolution? _profileResolution;
+    private RunResolution? _runResolution;
+    private BuildSession? _buildSession;
+    private string? _lastLogPath;
+    private string? _profileStatusText;
 
     public ProjectsPage()
     {
@@ -72,7 +80,174 @@ public sealed partial class ProjectsPage : Page
 
         OverviewTree.Text = p.Dirty ? "dirty — uncommitted changes present" : "clean";
         OverviewCommit.Text = p.RecentCommits.FirstOrDefault()?.Subject ?? "—";
+        ApplyBuildBadge(p);
+        ApplyBuildProfile(p);
         _ = LoadGitDetailsAsync(p);
+    }
+
+    /// <summary>
+    /// The header badge: the last remembered run for this project, read from
+    /// <see cref="BuildHistory"/> and nowhere else (D-0.3.10).
+    /// </summary>
+    private void ApplyBuildBadge(ProjectModel project)
+    {
+        var record = AppServices.Activity.History.LastFor(project.Path);
+
+        HeaderBuildBadge.Text = record?.BadgeText ?? "no build yet";
+        HeaderBuildGlyph.Glyph = record?.Status switch
+        {
+            DevDesk.Models.OperationStatus.Succeeded => "\uE73E",
+            DevDesk.Models.OperationStatus.Failed => "\uE783",
+            DevDesk.Models.OperationStatus.Canceled => "\uE71A",
+            _ => "\uE823",
+        };
+
+        var brushKey = record?.Status switch
+        {
+            DevDesk.Models.OperationStatus.Succeeded => "SystemFillColorSuccessBrush",
+            DevDesk.Models.OperationStatus.Failed => "SystemFillColorCriticalBrush",
+            _ => "TextFillColorTertiaryBrush",
+        };
+
+        var brush = (Brush)Application.Current.Resources[brushKey];
+        HeaderBuildBadge.Foreground = brush;
+        HeaderBuildGlyph.Foreground = brush;
+    }
+
+    /// <summary>
+    /// Resolves what Build would run for this project and states it in visible
+    /// text. A folder with no marker disables the buttons *and* says why: a
+    /// tooltip on a disabled control is never read (AGENTS gotcha 12).
+    /// </summary>
+    private void ApplyBuildProfile(ProjectModel project)
+    {
+        var resolution = BuildService.ResolveProfile(project, AppServices.Settings.Settings);
+        _profileResolution = resolution;
+        _runResolution = resolution.Profile is { } resolved
+            ? BuildOutputLocator.ResolveRunTarget(resolved)
+            : null;
+
+        if (resolution.Profile is not { } profile)
+        {
+            BuildButton.IsEnabled = false;
+            RunButton.IsEnabled = false;
+            PublishButton.IsEnabled = false;
+            ProfileButton.IsEnabled = false;
+            _profileStatusText = resolution.Reason ?? "Nothing to build here.";
+            BuildStatusLine.Text = _profileStatusText;
+            return;
+        }
+
+        BuildButton.IsEnabled = true;
+        PublishButton.IsEnabled = true;
+        ProfileButton.IsEnabled = true;
+
+        SelectCombo(ConfigurationBox, profile.Configuration);
+        SelectCombo(PlatformBox, profile.Platform);
+        NoRestoreBox.IsChecked = profile.NoRestore;
+        PlatformBox.IsEnabled = profile.PlatformApplies;
+        PlatformNote.Visibility = profile.PlatformApplies ? Visibility.Collapsed : Visibility.Visible;
+        PlatformNote.Text = "This project does not use a platform, so -p:Platform is not passed.";
+        UpdateProfilePreview(profile);
+
+        RunButton.IsEnabled = _runResolution?.CanRun == true;
+        var runNote = _runResolution?.CanRun == true
+            ? string.Empty
+            : $" · Run unavailable: {_runResolution?.Reason ?? "no application project was found"}";
+
+        BuildStatusLine.Text = (resolution.Warning ?? $"{profile.Summary} · {profile.TargetName}") + runNote;
+        _profileStatusText = BuildStatusLine.Text;
+    }
+
+    /// <summary>The profile as the flyout currently shows it, which is what a click runs.</summary>
+    private BuildProfile? CurrentProfile()
+    {
+        if (_profileResolution?.Profile is not { } profile)
+        {
+            return null;
+        }
+
+        return profile with
+        {
+            Configuration = SelectedText(ConfigurationBox) ?? profile.Configuration,
+            Platform = BuildProfileResolver.NormalizePlatform(SelectedText(PlatformBox)),
+            NoRestore = NoRestoreBox.IsChecked == true,
+        };
+    }
+
+    private void ProfileField_Changed(object sender, SelectionChangedEventArgs e) => RefreshProfilePreview();
+
+    private void ProfileField_Changed(object sender, RoutedEventArgs e) => RefreshProfilePreview();
+
+    private void RefreshProfilePreview()
+    {
+        if (_profileResolution?.Profile is not { } profile)
+        {
+            return;
+        }
+
+        PlatformNote.Visibility = profile.PlatformApplies ? Visibility.Collapsed : Visibility.Visible;
+        UpdateProfilePreview(CurrentProfile() ?? profile);
+    }
+
+    private void UpdateProfilePreview(BuildProfile profile)
+    {
+        ProfileCommand.Text = BuildCommandBuilder.Preview(BuildCommandBuilder.BuildArguments(profile));
+    }
+
+    private void SaveProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        var project = Selected;
+        var profile = CurrentProfile();
+        if (project is null || profile is null)
+        {
+            return;
+        }
+
+        var key = NormalizePath(project.Path);
+        AppServices.Settings.Settings.BuildProfiles.TryGetValue(key, out var existing);
+
+        AppServices.Settings.Settings.BuildProfiles[key] = new BuildProfileSettings
+        {
+            Configuration = profile.Configuration,
+            Platform = profile.Platform,
+            NoRestore = profile.NoRestore,
+            Target = existing?.Target,
+            ExtraArgs = existing?.ExtraArgs ?? string.Empty,
+        };
+        AppServices.Settings.Save();
+
+        BuildStatusLine.Text = $"Saved build profile for {project.Name}: {profile.Summary}.";
+        ApplyBuildProfile(project);
+    }
+
+    private static string? SelectedText(ComboBox box) =>
+        (box.SelectedItem as ComboBoxItem)?.Content as string;
+
+    private static void SelectCombo(ComboBox box, string value)
+    {
+        foreach (var item in box.Items.OfType<ComboBoxItem>())
+        {
+            if (string.Equals(item.Content as string, value, StringComparison.OrdinalIgnoreCase))
+            {
+                box.SelectedItem = item;
+                return;
+            }
+        }
+    }
+
+    private static string NormalizePath(string path)
+    {
+        try
+        {
+            return System.IO.Path.GetFullPath(path).TrimEnd(
+                System.IO.Path.DirectorySeparatorChar,
+                System.IO.Path.AltDirectorySeparatorChar);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or System.IO.PathTooLongException)
+        {
+            return path.Trim();
+        }
     }
 
     private async Task LoadGitDetailsAsync(ProjectModel project)
@@ -195,6 +370,7 @@ public sealed partial class ProjectsPage : Page
         ChangesPanel.Visibility = DetailTabs.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         CommitsPanel.Visibility = DetailTabs.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
         BranchesPanel.Visibility = DetailTabs.SelectedIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
+        BuildPanel.Visibility = DetailTabs.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void BranchesList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
@@ -539,6 +715,206 @@ public sealed partial class ProjectsPage : Page
 
     private void CancelOperationButton_Click(object sender, RoutedEventArgs e) => _operationCancellation?.Cancel();
 
+    // ---------------------------------------------------------------------
+    // Build / Run / Publish (0.3.0). The command is always built as an
+    // argument list by BuildCommandBuilder; this page only decides which verb
+    // the user asked for and reports what happened.
+    // ---------------------------------------------------------------------
+
+    private async void BuildButton_Click(object sender, RoutedEventArgs e) =>
+        await StartBuildAsync(OperationKind.Build);
+
+    private async void RunButton_Click(object sender, RoutedEventArgs e) =>
+        await StartBuildAsync(OperationKind.Run);
+
+    private async void PublishButton_Click(object sender, RoutedEventArgs e) =>
+        await StartBuildAsync(OperationKind.Publish);
+
+    private void StopButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_buildSession is { } session)
+        {
+            AppServices.Activity.Cancel(session.OperationId);
+        }
+    }
+
+    private async Task StartBuildAsync(OperationKind kind)
+    {
+        var project = Selected;
+        var profile = CurrentProfile();
+
+        if (project is null || profile is null)
+        {
+            ShowError("Nothing to build", _profileResolution?.Reason ?? "Select a project first.");
+            return;
+        }
+
+        if (_buildSession is { } active && !active.Completion.IsCompleted)
+        {
+            ShowWarning("A build is already running", "Wait for it to finish, or press Stop.");
+            return;
+        }
+
+        if (kind == OperationKind.Publish
+            && !await ConfirmOperationAsync(
+                $"Publish {project.Name}",
+                "Publish writes the app's own publish output. DevDesk never chooses an output folder, so the project file stays in charge.",
+                BuildCommandBuilder.Preview(BuildCommandBuilder.PublishArguments(profile)),
+                typedConfirmation: null))
+        {
+            return;
+        }
+
+        BuildOutput.Clear();
+        _lastLogPath = null;
+        OpenBuildLogButton.IsEnabled = false;
+        OpenLogFolderButton.IsEnabled = false;
+        ProblemsList.ItemsSource = null;
+        ProblemsEmpty.Visibility = Visibility.Collapsed;
+        ProblemCount.Text = string.Empty;
+        SetBuildRunning(true);
+        BuildSummary.Text = $"{Verb(kind)} {project.Name} · {profile.Summary} · running…";
+        BuildSummary.Foreground = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+        BuildHint.Text = "The console fills as the tool writes. The complete output is saved to the build log.";
+
+        var session = kind switch
+        {
+            OperationKind.Publish => _builds.Publish(project, profile, BuildOutput),
+            OperationKind.Run => _builds.Run(project, profile, BuildOutput),
+            _ => _builds.Build(project, profile, BuildOutput),
+        };
+
+        _buildSession = session;
+
+        try
+        {
+            var finished = await session.Completion;
+            ApplyBuildOutcome(project, finished);
+        }
+        catch (Exception ex)
+        {
+            LoggingService.Log.Error(ex, "{Kind} failed for {Project}", kind, project.Name);
+            ShowError($"{Verb(kind)} failed", ex.Message);
+        }
+        finally
+        {
+            SetBuildRunning(false);
+        }
+    }
+
+    private void ApplyBuildOutcome(ProjectModel project, Operation operation)
+    {
+        _lastLogPath = operation.LogPath;
+        var canOpen = !string.IsNullOrWhiteSpace(_lastLogPath) && System.IO.File.Exists(_lastLogPath);
+        OpenBuildLogButton.IsEnabled = canOpen;
+        OpenLogFolderButton.IsEnabled = canOpen;
+        ApplyBuildBadge(project);
+
+        BuildSummary.Text = operation.Status switch
+        {
+            DevDesk.Models.OperationStatus.Succeeded =>
+                $"{operation.KindLabel} {project.Name} succeeded in {operation.DurationText} · exit {operation.ExitCode ?? 0}",
+            DevDesk.Models.OperationStatus.Failed =>
+                $"{operation.KindLabel} {project.Name} failed in {operation.DurationText}"
+                + (operation.ExitCode is { } code ? $" · exit {code}" : string.Empty),
+            DevDesk.Models.OperationStatus.Canceled =>
+                $"{operation.KindLabel} {project.Name} cancelled after {operation.DurationText} · not a failure",
+            _ => $"{operation.KindLabel} {project.Name} · {operation.StatusLabel}",
+        };
+
+        BuildSummary.Foreground = (Brush)Application.Current.Resources[operation.Status switch
+        {
+            DevDesk.Models.OperationStatus.Succeeded => "SystemFillColorSuccessBrush",
+            DevDesk.Models.OperationStatus.Failed => "SystemFillColorCriticalBrush",
+            _ => "TextFillColorSecondaryBrush",
+        }];
+
+        BuildHint.Text = operation.FirstError
+            ?? operation.Hint
+            ?? (operation.Status == DevDesk.Models.OperationStatus.Succeeded
+                ? "The full output is in the build log."
+                : string.Empty);
+
+        var problems = _buildSession?.Problems;
+        ProblemsList.ItemsSource = problems?.Problems;        ProblemsEmpty.Visibility = (problems?.Problems.Count ?? 0) == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ProblemsEmpty.Text = operation.Status == DevDesk.Models.OperationStatus.Succeeded
+            ? "No problems reported. This build produced no errors or warnings."
+            : "No problems were parsed from this output — open the log to read the raw text.";
+        ProblemCount.Text = problems is null
+            ? string.Empty
+            : $"{problems.ErrorCount} error(s) · {problems.WarningCount} warning(s)"
+              + (problems.Truncated ? " · showing the first 500" : string.Empty);
+    }
+
+    private void ProblemsList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (ProblemsList.SelectedItem is BuildProblem problem)
+        {
+            ProblemNavigator.Open(problem);
+        }
+    }
+
+    private void CopyProblem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string text } || string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var package = new DataPackage();
+        package.SetText(text);
+        Clipboard.SetContent(package);
+    }
+
+    private void SetBuildRunning(bool running)
+    {
+        StopButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+
+        var idle = !running && _profileResolution?.IsBuildable == true;
+        BuildButton.IsEnabled = idle;
+        PublishButton.IsEnabled = idle;
+        ProfileButton.IsEnabled = idle;
+        RunButton.IsEnabled = idle && _runResolution?.CanRun == true;
+
+        BuildStatusLine.Text = running
+            ? "Building… the buttons return when it finishes."
+            : _profileStatusText ?? string.Empty;
+    }
+
+    private void OpenBuildLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_lastLogPath) || !ProjectOpenActions.OpenWithDefaultApp(_lastLogPath))
+        {
+            ShowError("No build log yet", "Run a build first; the log is written next to the app's data.");
+        }
+    }
+
+    private void OpenLogFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_lastLogPath) || !ProjectOpenActions.RevealInExplorer(_lastLogPath))
+        {
+            ShowError("No build log yet", "Run a build first; the log is written next to the app's data.");
+        }
+    }
+
+    private void ShowWarning(string title, string message)
+    {
+        PageInfoBar.Severity = InfoBarSeverity.Warning;
+        PageInfoBar.Title = title;
+        PageInfoBar.Message = message;
+        PageInfoBar.IsOpen = true;
+    }
+
+    private static string Verb(OperationKind kind) => kind switch
+    {
+        OperationKind.Publish => "Publish",
+        OperationKind.Run => "Run",
+        _ => "Build",
+    };
+
+
     private async Task<bool> ConfirmOperationAsync(string title, string consequence, string command, string? typedConfirmation)
     {
         var content = new StackPanel { Spacing = 10 };
@@ -605,6 +981,15 @@ public sealed partial class ProjectsPage : Page
         DeleteTagButton.IsEnabled = canWrite && TagsList.SelectedItem is GitTagInfo;
         AbortConflictButton.IsEnabled = canWrite;
         ContinueConflictButton.IsEnabled = canWrite && _conflictOperation is not null && _conflictsResolved;
+
+        // A build and a Git write must not overlap: switching branch under a
+        // running compiler is the kind of race that produces a mystery failure.
+        var buildIdle = _buildSession is null || _buildSession.Completion.IsCompleted;
+        var buildable = enabled && buildIdle && _profileResolution?.IsBuildable == true;
+        BuildButton.IsEnabled = buildable;
+        PublishButton.IsEnabled = buildable;
+        ProfileButton.IsEnabled = buildable;
+        RunButton.IsEnabled = buildable && _runResolution?.CanRun == true;
     }
 
     private void PublishProjectState(ProjectModel project)

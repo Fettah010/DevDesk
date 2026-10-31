@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:DevDesk.Models"
+    xmlns:vm="using:DevDesk.ViewModels"
     mc:Ignorable="d">
 
     <Page.Resources>
@@ -15,7 +16,7 @@
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         </Style>
 
-        <DataTemplate x:Key="ProjectCardTemplate" x:DataType="models:ProjectModel">
+        <DataTemplate x:Key="ProjectCardTemplate" x:DataType="vm:ProjectCardItem">
             <Border Style="{StaticResource DevCardStyle}">
                 <StackPanel Padding="16" Spacing="10">
 
@@ -158,6 +159,31 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </Border>
+
+                    <!-- Last run, joined from build-history.json (W-0.3.7). A card
+                         for a project that never built says so; a number is never
+                         borrowed from a neighbour (gotcha 16). -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon
+                            Glyph="{x:Bind BuildGlyph}"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                        <TextBlock
+                            Text="{x:Bind BuildBadgeText}"
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Visibility="{x:Bind MutedVisibility}"/>
+                        <TextBlock
+                            Text="{x:Bind BuildBadgeText}"
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                            Visibility="{x:Bind OkVisibility}"/>
+                        <TextBlock
+                            Text="{x:Bind BuildBadgeText}"
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Visibility="{x:Bind FailedVisibility}"/>
+                    </StackPanel>
 
                     <!-- Footer: remote host + dirty marker. -->
                     <StackPanel Orientation="Horizontal" Spacing="8">

@@ -50,6 +50,21 @@ Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName Microsoft.VisualBasic
 
+# UI Automation's TransformPattern.Resize hides this WinUI window (measured: the
+# HWND loses WS_VISIBLE and the whole navigation tree leaves the automation
+# tree), which then fails the navigation checks for the wrong reason. SetWindowPos
+# is the same call a user's resize ends in, and it keeps the window visible and
+# the minimum size enforced.
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class DevDeskShellNative
+{
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+}
+"@
+
 $failures = New-Object System.Collections.Generic.List[string]
 $results = New-Object System.Collections.Generic.List[string]
 
@@ -141,8 +156,11 @@ try {
     }
 
     Check "the minimum size is enforced" {
-        $pattern = $window.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern)
-        $pattern.Resize(400, 300)
+        # SWP_NOZORDER | SWP_NOMOVE: resize in place, exactly like a drag.
+        $handle = [IntPtr]$window.Current.NativeWindowHandle
+        if (-not [DevDeskShellNative]::SetWindowPos($handle, [IntPtr]::Zero, 0, 0, 400, 300, 0x0006)) {
+            throw "SetWindowPos failed for handle $handle"
+        }
         Start-Sleep -Milliseconds 700
         $rect = $window.Current.BoundingRectangle
         if ($rect.Width -lt 940 -or $rect.Height -lt 580) {

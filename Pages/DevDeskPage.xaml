@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:DevDesk.Models"
+    xmlns:controls="using:DevDesk.Controls"
     mc:Ignorable="d">
 
     <Page.Resources>
@@ -79,48 +80,114 @@
             </StackPanel>
         </Grid>
 
-        <!-- Quick actions. Open in Explorer and the roadmap link are real; the two
-             that would run git or a build are disabled until v0.3.0. -->
-        <Grid Grid.Row="1">
-            <StackPanel Orientation="Horizontal" Spacing="10">
-                <Button x:Name="OpenExplorerButton" CornerRadius="8" Click="OpenExplorerButton_Click"
-                        AutomationProperties.Name="Open DevDesk in Explorer">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE838;" FontSize="14"/>
-                        <TextBlock Text="Open in Explorer"/>
-                    </StackPanel>
+        <!-- Quick actions. Open in Explorer and the roadmap link are real, and so
+             are Build / Run tests / Rebuild & relaunch as of v0.3.0. The last one
+             hands the wait to the launcher: Windows locks the running exe and dll,
+             so only a process that is not this one can rebuild them. -->
+        <Grid Grid.Row="1" RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button x:Name="OpenExplorerButton" CornerRadius="8" Click="OpenExplorerButton_Click"
+                            AutomationProperties.Name="Open DevDesk in Explorer">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE838;" FontSize="14"/>
+                            <TextBlock Text="Open in Explorer"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="BuildSelfButton" CornerRadius="8" Click="BuildSelfButton_Click"
+                            AutomationProperties.Name="Build DevDesk"
+                            ToolTipService.ToolTip="dotnet build with the saved profile">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE756;" FontSize="14"/>
+                            <TextBlock Text="Build"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="RunTestsButton" CornerRadius="8" Click="RunTestsButton_Click"
+                            AutomationProperties.Name="Run the DevDesk test suite"
+                            ToolTipService.ToolTip="dotnet test DevDesk.Tests -p:Platform=x64">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE9D9;" FontSize="14"/>
+                            <TextBlock Text="Run tests"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="OpenPlanButton" CornerRadius="8" Click="OpenPlanButton_Click"
+                            AutomationProperties.Name="Open the roadmap">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE8A5;" FontSize="14"/>
+                            <TextBlock Text="Open roadmap"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="LaunchButton" CornerRadius="8" Click="LaunchButton_Click"
+                            AutomationProperties.Name="Rebuild and relaunch DevDesk"
+                            ToolTipService.ToolTip="Close this window, rebuild if a source changed, reopen">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE768;" FontSize="14"/>
+                            <TextBlock Text="Rebuild &amp; relaunch"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="StopSelfButton" CornerRadius="8" Click="StopSelfButton_Click"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="Stop the running build"
+                            ToolTipService.ToolTip="Stop the running build">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE71A;" FontSize="14"/>
+                            <TextBlock Text="Stop"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <TextBlock
+                    x:Name="SelfPathText"
+                    Text="{x:Bind ViewModel.SelfPathText, Mode=OneWay}"
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"/>
+            </Grid>
+
+            <!-- What the last run did, and the console it wrote to. The console is
+                 bounded on screen and complete on disk (D-0.3.5), so the flyout
+                 says where the full log is instead of pretending to hold it. -->
+            <Grid Grid.Row="1" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ProgressRing
+                    x:Name="SelfBuildRing"
+                    Grid.Column="0"
+                    Width="16" Height="16"
+                    IsActive="False"
+                    Visibility="Collapsed"
+                    VerticalAlignment="Center"/>
+                <TextBlock
+                    x:Name="SelfBuildStatus"
+                    Grid.Column="1"
+                    Text="No build has run in this session."
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap"
+                    VerticalAlignment="Center"/>
+                <Button
+                    x:Name="ShowOutputButton"
+                    Grid.Column="2"
+                    Content="Output"
+                    CornerRadius="8"
+                    Padding="12,4"
+                    IsEnabled="False"
+                    AutomationProperties.Name="Show the last run's console">
+                    <Button.Flyout>
+                        <Flyout x:Name="OutputFlyout" Placement="Bottom">
+                            <controls:BuildConsole x:Name="SelfConsole" Width="820" Height="420"/>
+                        </Flyout>
+                    </Button.Flyout>
                 </Button>
-                <Button x:Name="RunTestsButton" CornerRadius="8" IsEnabled="False"
-                        AutomationProperties.Name="Run tests (arrives in v0.3.0)"
-                        ToolTipService.ToolTip="Running tests from the app arrives in v0.3.0">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE9D9;" FontSize="14"/>
-                        <TextBlock Text="Run tests"/>
-                    </StackPanel>
-                </Button>
-                <Button x:Name="OpenPlanButton" CornerRadius="8" Click="OpenPlanButton_Click"
-                        AutomationProperties.Name="Open the roadmap">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE8A5;" FontSize="14"/>
-                        <TextBlock Text="Open roadmap"/>
-                    </StackPanel>
-                </Button>
-                <Button x:Name="LaunchButton" CornerRadius="8" IsEnabled="False"
-                        AutomationProperties.Name="Rebuild and relaunch (arrives in v0.3.0)"
-                        ToolTipService.ToolTip="Building and launching from the app arrives in v0.3.0">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE768;" FontSize="14"/>
-                        <TextBlock Text="Rebuild &amp; relaunch"/>
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-            <TextBlock
-                x:Name="SelfPathText"
-                Text="{x:Bind ViewModel.SelfPathText, Mode=OneWay}"
-                Style="{ThemeResource CaptionTextBlockStyle}"
-                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Center"/>
+            </Grid>
         </Grid>
 
         <!-- Failures only; nothing is announced here until something goes wrong. -->
