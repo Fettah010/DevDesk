@@ -20,6 +20,12 @@ public sealed class BuildSession
 
     public BuildProblemCollector Problems { get; internal set; }
 
+    /// <summary>
+    /// The folder MSBuild reported for a successful publish (D-0.3.3). Null for
+    /// every other verb and for a publish that did not report one.
+    /// </summary>
+    public string? OutputPath { get; internal set; }
+
     public string OperationId => Handle.Id;
 
     public Task<Operation> Completion => Handle.Completion;
@@ -191,8 +197,18 @@ public sealed class BuildService
                 _ => PerfOutcome.Failed,
             });
 
+        // Publish is the one verb whose output is a folder the user wants to
+        // open. Take it from the line MSBuild wrote (D-0.3.3); a failed publish
+        // has no folder worth opening.
+        if (kind == OperationKind.Publish
+            && result.Outcome == ProcessOutcome.Succeeded
+            && pump.OutputPath is { } output)
+        {
+            session.OutputPath = NormalizePath(output);
+        }
+
         log.Flush();
-        return Outcome(result, session.Problems, logPath);
+        return Outcome(result, session.Problems, logPath, session.OutputPath);
     }
 
     private async Task<ProcessResult> ExecuteCoreAsync(
@@ -268,9 +284,10 @@ public sealed class BuildService
     private static OperationOutcome Outcome(
         ProcessResult result,
         BuildProblemCollector problems,
-        string logPath) => result.Outcome switch
+        string logPath,
+        string? outputPath) => result.Outcome switch
     {
-        ProcessOutcome.Succeeded => OperationOutcome.Succeeded(result.ExitCode, logPath),
+        ProcessOutcome.Succeeded => OperationOutcome.Succeeded(result.ExitCode, logPath, outputPath),
         ProcessOutcome.Canceled => OperationOutcome.Canceled(logPath),
         ProcessOutcome.TimedOut => OperationOutcome.Failed(
             result.ExitCode,

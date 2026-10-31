@@ -33,6 +33,7 @@ public sealed partial class ProjectsPage : Page
     private RunResolution? _runResolution;
     private BuildSession? _buildSession;
     private string? _lastLogPath;
+    private string? _outputPath;
     private string? _profileStatusText;
 
     public ProjectsPage()
@@ -767,8 +768,10 @@ public sealed partial class ProjectsPage : Page
 
         BuildOutput.Clear();
         _lastLogPath = null;
+        _outputPath = null;
         OpenBuildLogButton.IsEnabled = false;
         OpenLogFolderButton.IsEnabled = false;
+        OpenOutputButton.Visibility = Visibility.Collapsed;
         ProblemsList.ItemsSource = null;
         ProblemsEmpty.Visibility = Visibility.Collapsed;
         ProblemCount.Text = string.Empty;
@@ -808,6 +811,15 @@ public sealed partial class ProjectsPage : Page
         var canOpen = !string.IsNullOrWhiteSpace(_lastLogPath) && System.IO.File.Exists(_lastLogPath);
         OpenBuildLogButton.IsEnabled = canOpen;
         OpenLogFolderButton.IsEnabled = canOpen;
+
+        // The publish folder is whatever MSBuild printed, not a path this app
+        // constructed; it is only offered when that folder really exists.
+        _outputPath = operation.OutputPath;
+        OpenOutputButton.Visibility = !string.IsNullOrWhiteSpace(_outputPath)
+            && System.IO.Directory.Exists(_outputPath)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
         ApplyBuildBadge(project);
 
         BuildSummary.Text = operation.Status switch
@@ -896,6 +908,16 @@ public sealed partial class ProjectsPage : Page
         if (string.IsNullOrWhiteSpace(_lastLogPath) || !ProjectOpenActions.RevealInExplorer(_lastLogPath))
         {
             ShowError("No build log yet", "Run a build first; the log is written next to the app's data.");
+        }
+    }
+
+    private void OpenOutputButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_outputPath) || !ProjectOpenActions.OpenInExplorer(_outputPath))
+        {
+            ShowError(
+                "No publish output yet",
+                "Publish a project first; the folder comes from the path MSBuild reports, never from a guess.");
         }
     }
 

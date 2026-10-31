@@ -43,7 +43,8 @@ public sealed record Operation(
     string? LogPath = null,
     string? Hint = null,
     string Configuration = "",
-    string Platform = "")
+    string Platform = "",
+    string? OutputPath = null)
 {
     public bool IsFinished => Status is OperationStatus.Succeeded or OperationStatus.Failed or OperationStatus.Canceled;
 
@@ -85,10 +86,11 @@ public sealed record OperationOutcome(
     int? ExitCode = null,
     string? FirstError = null,
     string? LogPath = null,
-    string? Hint = null)
+    string? Hint = null,
+    string? OutputPath = null)
 {
-    public static OperationOutcome Succeeded(int exitCode, string? logPath = null) =>
-        new(OperationStatus.Succeeded, exitCode, LogPath: logPath);
+    public static OperationOutcome Succeeded(int exitCode, string? logPath = null, string? outputPath = null) =>
+        new(OperationStatus.Succeeded, exitCode, LogPath: logPath, OutputPath: outputPath);
 
     public static OperationOutcome Failed(int? exitCode, string? firstError, string? logPath = null, string? hint = null) =>
         new(OperationStatus.Failed, exitCode, firstError, logPath, hint);

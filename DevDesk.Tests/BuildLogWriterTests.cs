@@ -118,6 +118,37 @@ public class BuildLogWriterTests
     }
 
     [Fact]
+    public void Pump_KeepsTheLastOutputPathMSBuildReported()
+    {
+        using var sandbox = new SettingsSandbox();
+        using var writer = new BuildLogWriter(Path.Combine(sandbox.Directory, "paths.log"));
+        var pump = new BuildOutputPump(null, writer, new BuildProblemCollector(), new TestClock());
+
+        pump.Report(new ProcessOutputLine(@"  App -> C:\out\bin\Debug\net10.0\App.dll", false, At));
+        pump.Report(new ProcessOutputLine(@"  App -> C:\out\bin\Debug\net10.0\publish\", false, At));
+
+        // dotnet publish prints the assembly first and the folder last; the
+        // folder is the one a user would open (D-0.3.3).
+        Assert.Equal(@"C:\out\bin\Debug\net10.0\publish\", pump.OutputPath);
+    }
+
+    [Fact]
+    public void Pump_ALineWithoutAnArrowLeavesThePathAlone()
+    {
+        using var sandbox = new SettingsSandbox();
+        using var writer = new BuildLogWriter(Path.Combine(sandbox.Directory, "paths.log"));
+        var pump = new BuildOutputPump(null, writer, new BuildProblemCollector(), new TestClock());
+
+        pump.Report(new ProcessOutputLine("Build succeeded.", false, At));
+        Assert.Null(pump.OutputPath);
+
+        pump.Report(new ProcessOutputLine(@"  App -> C:\out\publish\", false, At));
+        pump.Report(new ProcessOutputLine("Time Elapsed 00:00:02.11", false, At));
+
+        Assert.Equal(@"C:\out\publish\", pump.OutputPath);
+    }
+
+    [Fact]
     public void Writer_APathThatCannotBeOpenedIsNotAnError()
     {
         var missing = Path.Combine(

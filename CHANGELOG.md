@@ -22,7 +22,8 @@ allowed; the tag suffix (`-beta`, `-dev`) selects the release channel.
 - Build / run / publish / test any project in the ecosystem from the Projects
   **Build** tab: argument-list `dotnet` processes, one build at a time (the rest
   queue), exe launch with a `dotnet run` fallback, publish path read from the
-  real output line, and "open output folder".
+  real output line, **Open output** (only for a successful publish whose folder
+  exists), and "open log / open log folder".
 - A live log console: search with match count, follow-tail, wrap, copy, save,
   ANSI/`\r` handling, and a bounded 20,000-line window over a complete log file.
 - MSBuild problems parsed into a clickable list (severity, code, file, line,

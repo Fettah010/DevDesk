@@ -148,8 +148,20 @@ public sealed class BuildOutputPump : IProgress<ProcessOutputLine>
         _time = time ?? TimeProvider.System;
     }
 
+    /// <summary>
+    /// The last path MSBuild printed after " -> ". For <c>dotnet publish</c> that
+    /// is the publish folder (D-0.3.3); the app never guesses one. Null until a
+    /// line carries a path, so "no output yet" stays distinguishable from "here".
+    /// </summary>
+    public string? OutputPath { get; private set; }
+
     public void Report(ProcessOutputLine value)
     {
+        if (TryReadOutputPath(value.Text, out var path))
+        {
+            OutputPath = path;
+        }
+
         _log.WriteLine(value.Text);
         _problems.Add(value.Text);
         _console?.Report(value);
@@ -158,4 +170,24 @@ public sealed class BuildOutputPump : IProgress<ProcessOutputLine>
     /// <summary>Writes a line this app produced (command, folder, hint) to the file and the console.</summary>
     public void WriteLine(string text) =>
         Report(new ProcessOutputLine(text, false, _time.GetUtcNow()));
+
+    private static bool TryReadOutputPath(string text, out string path)
+    {
+        path = string.Empty;
+
+        var marker = text.IndexOf(" -> ", StringComparison.Ordinal);
+        if (marker < 0)
+        {
+            return false;
+        }
+
+        var candidate = text[(marker + 4)..].Trim();
+        if (candidate.Length == 0)
+        {
+            return false;
+        }
+
+        path = candidate;
+        return true;
+    }
 }

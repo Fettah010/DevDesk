@@ -61,7 +61,8 @@ dotnet run
   typed confirmation. Conflicts can be inspected, opened in Visual Studio,
   continued or aborted. The **Build** tab builds, runs and publishes the
   selected project with a live console (search, follow-tail, copy, save),
-  clickable MSBuild problems and a persisted "last build" badge.
+  clickable MSBuild problems, a persisted "last build" badge, and **Open
+  output** after a publish (the folder MSBuild reported).
 - **DevDesk**: this app's own workspace — real repo state (branch, version,
   commits) and its components (tests, roadmap, scripts, CI workflow), with
   "open in Explorer", "open roadmap", **Build**, **Run tests** and **Rebuild &

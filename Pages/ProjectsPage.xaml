@@ -454,13 +454,20 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Button x:Name="OpenBuildLogButton" Content="Open log" Click="OpenBuildLogButton_Click"
                                 IsEnabled="False" CornerRadius="8"/>
                         <Button x:Name="OpenLogFolderButton" Grid.Column="1" Content="Open log folder"
                                 Click="OpenLogFolderButton_Click" IsEnabled="False" CornerRadius="8"/>
-                        <TextBlock x:Name="BuildHint" Grid.Column="2" VerticalAlignment="Center"
+                        <!-- Only after a successful publish: it opens the folder MSBuild
+                             reported. Collapsed rather than disabled, because a disabled
+                             WinUI button cannot show why it is off (gotcha 12). -->
+                        <Button x:Name="OpenOutputButton" Grid.Column="2" Content="Open output"
+                                Click="OpenOutputButton_Click" Visibility="Collapsed" CornerRadius="8"
+                                AutomationProperties.Name="Open the publish output folder"/>
+                        <TextBlock x:Name="BuildHint" Grid.Column="3" VerticalAlignment="Center"
                                    Style="{ThemeResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                    TextWrapping="Wrap"/>

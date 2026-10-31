@@ -307,6 +307,7 @@ public sealed class ActivityCenter
                 FirstError = outcome.FirstError,
                 LogPath = outcome.LogPath,
                 Hint = outcome.Hint,
+                OutputPath = outcome.OutputPath,
             };
 
             ReplaceLocked(finished);

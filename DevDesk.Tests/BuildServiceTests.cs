@@ -166,6 +166,48 @@ public class BuildServiceTests
     }
 
     [Fact]
+    public async Task Publish_ReportsTheFolderMSBuildWrote()
+    {
+        using var project = new TempProject();
+        project.AddSolution();
+        using var harness = new Harness(project.Root);
+
+        harness.Runner.Lines.Add(new ProcessOutputLine(
+            @"  App -> C:\out\publish\",
+            false,
+            DateTimeOffset.UnixEpoch));
+
+        var session = harness.Service.Publish(harness.Project, harness.Profile());
+        var finished = await session.Completion.WaitAsync(Wait);
+
+        Assert.Equal(OperationStatus.Succeeded, finished.Status);
+        Assert.Equal(@"C:\out\publish", finished.OutputPath);
+        Assert.Equal(finished.OutputPath, session.OutputPath);
+    }
+
+    [Fact]
+    public async Task Publish_AFailureOffersNoOutputFolder()
+    {
+        using var project = new TempProject();
+        project.AddSolution();
+        using var harness = new Harness(project.Root);
+
+        harness.Runner.Outcome = ProcessOutcome.Failed;
+        harness.Runner.ExitCode = 1;
+        harness.Runner.Lines.Add(new ProcessOutputLine(
+            @"  App -> C:\out\publish\",
+            false,
+            DateTimeOffset.UnixEpoch));
+
+        var session = harness.Service.Publish(harness.Project, harness.Profile());
+        var finished = await session.Completion.WaitAsync(Wait);
+
+        Assert.Equal(OperationStatus.Failed, finished.Status);
+        Assert.Null(finished.OutputPath);
+        Assert.Null(session.OutputPath);
+    }
+
+    [Fact]
     public async Task TestSelf_UsesTheAppsOwnTestProject()
     {
         using var project = new TempProject();

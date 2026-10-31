@@ -271,8 +271,9 @@ drafts, and `--pre` is never passed.
 20. **Platform is passed only when it applies.** `PlatformApplies` is true by
     default and false only for a `.csproj` with no Windows App SDK reference
     and no `<Platforms>` containing the value; console solutions must not get
-    `-p:Platform=x64`. Publish never passes `-o`: the output path comes from the
-    real `-> …` line (D-0.3.3).
+    `-p:Platform=x64`. Publish never passes `-o`: the folder is whatever MSBuild
+    printed after ` -> ` (the last such line), kept by `BuildOutputPump`, and
+    "Open output" appears only when that folder really exists (D-0.3.3).
 21. **The console is a bounded window; the file is complete.** The control keeps
     20,000 lines and shows an explicit "N earlier lines" row; the log file on
     disk holds every line, and "Save as…"/Diagnostics point at it. Do not raise
