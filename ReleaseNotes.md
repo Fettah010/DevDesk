@@ -1,12 +1,16 @@
-# DevDesk 0.5.0-beta
+# DevDesk 0.6.0-beta
 
-This release adds read-only GitHub visibility for local repositories:
+This release adds a guarded release workflow inside DevDesk:
 
-- View GitHub Actions runs, published releases by channel, and open pull requests.
-- Authenticate with a personal access token stored outside application settings.
-- Refresh selected repository data with bounded caching, cancellation, and clear
-  stale, permission, and rate-limit states.
-- Open validated GitHub run, release, and pull-request links.
+- Preview a channel-aware version suggestion and synchronized project version
+  changes.
+- Draft and edit release notes before saving them to the repository.
+- Review the exact version, notes, commit, tag, and push remote before making
+  local changes.
+- Confirm tag publication separately, then monitor the matching GitHub Actions
+  run with bounded polling.
+- Track release operations in Activity and view the latest published release
+  for each channel on the DevDesk self page.
 
-Release notes and publishing remain handled by the repository's existing
-GitHub Actions release workflow.
+Publishing continues to use the repository's existing, gated GitHub Actions
+release pipeline.
