@@ -29,6 +29,28 @@ public class ReleaseChannelsTests
     }
 
     [Theory]
+    [InlineData(null, ReleaseChannel.Stable)]
+    [InlineData("", ReleaseChannel.Stable)]
+    [InlineData("stable", ReleaseChannel.Stable)]
+    [InlineData("BETA", ReleaseChannel.Beta)]
+    [InlineData(" dev ", ReleaseChannel.Dev)]
+    public void TryParseSuffix_MapsKnownSuffixesToTypedChannels(string? suffix, ReleaseChannel expected)
+    {
+        Assert.True(ReleaseChannels.TryParseSuffix(suffix, out var channel));
+        Assert.Equal(expected, channel);
+        Assert.Equal(ReleaseChannels.FromSuffix(suffix), ReleaseChannels.ToName(channel));
+    }
+
+    [Theory]
+    [InlineData("alpha")]
+    [InlineData("nightly")]
+    public void TryParseSuffix_RejectsUnknownChannels(string suffix)
+    {
+        Assert.False(ReleaseChannels.TryParseSuffix(suffix, out var channel));
+        Assert.Equal(ReleaseChannel.Stable, channel);
+    }
+
+    [Theory]
     [InlineData("alpha")]
     [InlineData("rc1")]
     [InlineData("release")]
@@ -50,12 +72,28 @@ public class ReleaseChannelsTests
     }
 
     [Theory]
+    [InlineData("v0.1.0-beta", "0.1.0", ReleaseChannel.Beta)]
+    [InlineData("0.1.0-dev", "0.1.0", ReleaseChannel.Dev)]
+    [InlineData("v1.0.0", "1.0.0", ReleaseChannel.Stable)]
+    public void TryParseTag_ProvidesTypedChannel(string tag, string version, ReleaseChannel channel)
+    {
+        Assert.True(ReleaseChannels.TryParseTagTyped(tag, out var parsedVersion, out var parsedChannel));
+        Assert.Equal(version, parsedVersion);
+        Assert.Equal(channel, parsedChannel);
+        Assert.Equal(ReleaseChannels.ToName(parsedChannel), ReleaseChannels.FromSuffix(
+            tag.Contains('-') ? tag[(tag.IndexOf('-') + 1)..] : null));
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData(null)]
     [InlineData("v0.1")]
     [InlineData("v0.1.0-alpha")]
     [InlineData("nightly")]
     [InlineData("v0.1.0-beta.2")]
+    [InlineData("v01.2.3-beta")]
+    [InlineData("v1.2.3.4")]
+    [InlineData("v2147483648.0.0")]
     public void TryParseTag_RefusesAnythingItCannotMap(string? tag)
     {
         Assert.False(ReleaseChannels.TryParseTag(tag, out var version, out var channel));

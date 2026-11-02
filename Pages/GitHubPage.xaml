@@ -5,32 +5,47 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    Loaded="Page_Loaded"
+    Unloaded="Page_Unloaded">
 
     <Grid Padding="28,20,28,24" RowSpacing="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
         <Grid Grid.Row="0">
             <StackPanel Spacing="2">
                 <TextBlock Text="GitHub" Style="{ThemeResource TitleTextBlockStyle}" FontWeight="SemiBold"/>
                 <TextBlock
-                    Text="Releases, Actions runs and repo state — across every project with a remote."
+                    x:Name="PageDescription"
+                    Text="Read-only releases, Actions runs and pull requests for a selected local repository."
                     Style="{ThemeResource BodyTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
+            <Button
+                x:Name="ReleaseButton"
+                CornerRadius="8"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                Margin="0,0,104,0"
+                Click="ReleaseButton_Click"
+                AutomationProperties.Name="Prepare a confirmed release for the selected repository">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE7C3;" FontSize="14"/>
+                    <TextBlock Text="Prepare release"/>
+                </StackPanel>
+            </Button>
             <Button
                 x:Name="RefreshButton"
                 CornerRadius="8"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Center"
-                IsEnabled="False"
-                AutomationProperties.Name="Refresh from GitHub (arrives in v0.5.0)"
-                ToolTipService.ToolTip="Reading from GitHub arrives in v0.5.0">
+                Click="RefreshButton_Click"
+                AutomationProperties.Name="Refresh selected GitHub repository">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="&#xE72C;" FontSize="14"/>
                     <TextBlock Text="Refresh"/>
@@ -38,77 +53,225 @@
             </Button>
         </Grid>
 
-        <!-- The one honest thing this page can say today, said once and plainly. -->
         <InfoBar
-            x:Name="PendingInfoBar"
+            x:Name="StateInfoBar"
             Grid.Row="1"
             Severity="Informational"
-            IsOpen="True"
-            Title="Nothing here is connected yet"
-            Message="The GitHub client arrives in v0.5.0. Until then this page reads nothing and shows no runs or releases — DevDesk never invents data."
-            IsClosable="False"/>
+            IsOpen="False"
+            IsClosable="True"/>
 
-        <!-- Content: the two panes the client will fill. -->
-        <Grid Grid.Row="2" ColumnSpacing="16">
+        <Grid Grid.Row="2" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3*"/>
-                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
+            <TextBlock
+                Grid.Column="0"
+                Text="Repository"
+                Style="{ThemeResource BodyStrongTextBlockStyle}"
+                VerticalAlignment="Center"/>
+            <ComboBox
+                x:Name="RepositoryPicker"
+                Grid.Column="1"
+                MinWidth="280"
+                MaxWidth="520"
+                HorizontalAlignment="Left"
+                DisplayMemberPath="Name"
+                SelectionChanged="RepositoryPicker_SelectionChanged"
+                AutomationProperties.Name="Select a local repository for GitHub data"/>
+            <TextBlock
+                x:Name="AccountText"
+                Grid.Column="2"
+                Text="Public access"
+                Style="{ThemeResource CaptionTextBlockStyle}"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                VerticalAlignment="Center"
+                Margin="12,0,0,0"/>
+        </Grid>
 
-            <Border Grid.Column="0" Style="{StaticResource DevCardStyle}" Padding="18">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Actions runs" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
-                    <TextBlock
-                        Text="Latest workflow runs on the default branch."
-                        Style="{ThemeResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <StackPanel Spacing="6" HorizontalAlignment="Center" Margin="0,24,0,0">
-                        <FontIcon
-                            Glyph="&#xE774;"
-                            FontSize="22"
-                            HorizontalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+        <Grid Grid.Row="3" RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource DevCardStyle}" Padding="14">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2">
+                        <TextBlock x:Name="RepositoryTitle" Text="Choose a repository" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
                         <TextBlock
-                            Text="Workflow runs arrive in v0.5.0"
-                            Style="{ThemeResource BodyStrongTextBlockStyle}"
-                            HorizontalAlignment="Center"/>
-                        <TextBlock
-                            Text="Run status, logs, cancel and re-run come with the GitHub client."
+                            x:Name="RepositorySummary"
+                            Text="GitHub requests happen only while this page is open."
                             Style="{ThemeResource CaptionTextBlockStyle}"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextAlignment="Center"
                             TextWrapping="Wrap"/>
                     </StackPanel>
-                </StackPanel>
+                    <ProgressRing
+                        x:Name="LoadingRing"
+                        Grid.Column="1"
+                        Width="20"
+                        Height="20"
+                        IsActive="False"
+                        Visibility="Collapsed"
+                        VerticalAlignment="Center"/>
+                </Grid>
             </Border>
 
-            <Border Grid.Column="1" Style="{StaticResource DevCardStyle}" Padding="18">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Releases" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
-                    <TextBlock
-                        Text="Published versions per channel: stable, beta, dev."
-                        Style="{ThemeResource CaptionTextBlockStyle}"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextWrapping="Wrap"/>
-                    <StackPanel Spacing="6" HorizontalAlignment="Center" Margin="0,24,0,0">
-                        <FontIcon
-                            Glyph="&#xE896;"
-                            FontSize="22"
-                            HorizontalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+            <Grid Grid.Row="1" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource DevCardStyle}" Padding="14">
+                    <Grid RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Actions runs" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock
+                                Text="Latest workflow runs"
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
                         <TextBlock
-                            Text="Releases arrive in v0.5.0"
-                            Style="{ThemeResource BodyStrongTextBlockStyle}"
-                            HorizontalAlignment="Center"/>
-                        <TextBlock
-                            Text="The release list and the release wizard need the GitHub client and its token storage."
+                            x:Name="RunsEmpty"
+                            Grid.Row="1"
+                            Text="No workflow runs returned."
                             Style="{ThemeResource CaptionTextBlockStyle}"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextAlignment="Center"
-                            TextWrapping="Wrap"/>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"/>
+                        <ListView
+                            x:Name="RunsList"
+                            Grid.Row="1"
+                            IsItemClickEnabled="True"
+                            ItemClick="RunsList_ItemClick"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Spacing="2" Padding="2,6">
+                                        <TextBlock Text="{Binding Title}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Detail}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding DateText}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource DevCardStyle}" Padding="14">
+                    <Grid RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Releases" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock
+                                Text="Grouped by the stable, beta and dev tag vocabulary"
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <TextBlock
+                            x:Name="ReleasesEmpty"
+                            Grid.Row="1"
+                            Text="No published releases returned."
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"/>
+                        <ListView
+                            x:Name="ReleasesList"
+                            Grid.Row="1"
+                            IsItemClickEnabled="True"
+                            ItemClick="ReleasesList_ItemClick"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Spacing="2" Padding="2,6">
+                                        <TextBlock Text="{Binding Title}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Channel}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource SeaBlueBrush}"/>
+                                        <TextBlock Text="{Binding DateText}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource DevCardStyle}" Padding="14">
+                    <Grid RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Open pull requests" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock
+                                Text="State, draft status and check summary"
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
+                        <TextBlock
+                            x:Name="PullRequestsEmpty"
+                            Grid.Row="1"
+                            Text="No open pull requests returned."
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"/>
+                        <ListView
+                            x:Name="PullRequestsList"
+                            Grid.Row="1"
+                            IsItemClickEnabled="True"
+                            ItemClick="PullRequestsList_ItemClick"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Spacing="2" Padding="2,6">
+                                        <TextBlock Text="{Binding Title}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Detail}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding DateText}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                <HyperlinkButton
+                    x:Name="ReleaseRunLink"
+                    Content="Open release workflow"
+                    Visibility="Collapsed"
+                    Click="ReleaseRunLink_Click"
+                    AutomationProperties.Name="Open the verified release workflow run in GitHub"/>
+                <TextBlock
+                    x:Name="RateLimitText"
+                    Text="GitHub data is read on demand; no background polling."
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    VerticalAlignment="Center"/>
+            </StackPanel>
         </Grid>
     </Grid>
 </Page>

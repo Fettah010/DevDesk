@@ -28,27 +28,54 @@ if ([string]::IsNullOrWhiteSpace($Project)) {
 }
 $Project = (Resolve-Path $Project).Path
 
-if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+if ($Version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
     Write-Error "Version must look like MAJOR.MINOR.PATCH (got '$Version')."
     exit 2
 }
-
-$encoding = [System.Text.UTF8Encoding]::new($false)
-$text = [System.IO.File]::ReadAllText($Project, $encoding)
-$lines = $text -split "`n"
-
-$propertyRegex = [regex]::new('^\s*<(Version|AssemblyVersion|FileVersion|InformationalVersion)>([^<]*)</\1>\s*$')
-$current = @{}
-foreach ($line in $lines) {
-    $m = $propertyRegex.Match($line)
-    if ($m.Success) {
-        $current[$m.Groups[1].Value] = $m.Groups[2].Value.Trim()
+foreach ($component in $Version.Split(".")) {
+    $parsedComponent = 0
+    if (-not [int]::TryParse(
+            $component,
+            [System.Globalization.NumberStyles]::None,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [ref]$parsedComponent)) {
+        Write-Error "Each version component must fit the supported numeric range."
+        exit 2
     }
 }
 
-if (-not $current.ContainsKey("Version")) {
-    Write-Error "Could not find a <Version> element in $Project."
-    exit 3
+$bytes = [System.IO.File]::ReadAllBytes($Project)
+$hasUtf8Bom = $bytes.Length -ge 3 -and
+    $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+$readEncoding = [System.Text.UTF8Encoding]::new($false)
+$writeEncoding = [System.Text.UTF8Encoding]::new($hasUtf8Bom)
+$text = [System.IO.File]::ReadAllText($Project, $readEncoding)
+$newlineMatch = [regex]::Match($text, "\r\n|\n|\r")
+$newline = if ($newlineMatch.Success) { $newlineMatch.Value } else { [Environment]::NewLine }
+$lines = [regex]::Split($text, "\r\n|\n|\r")
+
+$propertyRegex = [regex]::new('^\s*<(Version|AssemblyVersion|FileVersion|InformationalVersion)>([^<]*)</\1>\s*$')
+$current = @{}
+$propertyCounts = @{}
+foreach ($line in $lines) {
+    $m = $propertyRegex.Match($line)
+    if ($m.Success) {
+        $name = $m.Groups[1].Value
+        $propertyCounts[$name] = 1 + [int]$propertyCounts[$name]
+        $current[$name] = $m.Groups[2].Value.Trim()
+    }
+}
+
+$requiredProperties = @("Version", "AssemblyVersion", "FileVersion", "InformationalVersion")
+foreach ($name in $requiredProperties) {
+    if (-not $propertyCounts.ContainsKey($name)) {
+        Write-Error "Could not find a <$name> element in $Project."
+        exit 3
+    }
+    if ($propertyCounts[$name] -ne 1) {
+        Write-Error "Expected exactly one <$name> element in $Project."
+        exit 3
+    }
 }
 
 # Suffix: keep the current one unless the caller asked for something.
@@ -59,12 +86,15 @@ if ([string]::IsNullOrWhiteSpace($effectiveSuffix)) {
     $effectiveSuffix = if ($dash -ge 0) { $currentInfo.Substring($dash + 1) } else { "none" }
 }
 
-$effectiveSuffix = $effectiveSuffix.Trim().TrimStart('-')
-if ($effectiveSuffix -eq "none") {
+$effectiveSuffix = $effectiveSuffix.Trim()
+if ($effectiveSuffix.StartsWith("-", [System.StringComparison]::Ordinal)) {
+    $effectiveSuffix = $effectiveSuffix.Substring(1)
+}
+if ($effectiveSuffix -eq "none" -or $effectiveSuffix -eq "stable") {
     $effectiveSuffix = ""
 }
-elseif ($effectiveSuffix -notmatch '^[a-z][a-z0-9]*$') {
-    Write-Error "Suffix must be lowercase letters/digits (or 'none'); got '$effectiveSuffix'."
+elseif ($effectiveSuffix -notin @("beta", "dev")) {
+    Write-Error "Suffix must be stable, beta, dev, or 'none'; got '$effectiveSuffix'."
     exit 2
 }
 
@@ -101,7 +131,25 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
     }
 }
 
-[System.IO.File]::WriteAllText($Project, ($lines -join "`n"), $encoding)
+$updatedText = $lines -join $newline
+$directory = [System.IO.Path]::GetDirectoryName($Project)
+$temporaryFile = Join-Path $directory (".{0}.{1}.tmp" -f [System.IO.Path]::GetFileName($Project), [guid]::NewGuid().ToString("N"))
+$backupFile = Join-Path $directory (".{0}.{1}.bak" -f [System.IO.Path]::GetFileName($Project), [guid]::NewGuid().ToString("N"))
+$replacementCompleted = $false
+
+try {
+    [System.IO.File]::WriteAllText($temporaryFile, $updatedText, $writeEncoding)
+    [System.IO.File]::Replace($temporaryFile, $Project, $backupFile)
+    $replacementCompleted = $true
+}
+finally {
+    if ([System.IO.File]::Exists($temporaryFile)) {
+        [System.IO.File]::Delete($temporaryFile)
+    }
+    if ($replacementCompleted -and [System.IO.File]::Exists($backupFile)) {
+        [System.IO.File]::Delete($backupFile)
+    }
+}
 
 Write-Host "Updated $Project" -ForegroundColor Cyan
 foreach ($key in $wanted.Keys) {

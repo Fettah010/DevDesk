@@ -29,6 +29,7 @@ public sealed partial class SettingsPage : Page
 
         SelectChannelIndex(settings.Channel);
         _initialising = false;
+        RefreshGitHubCredentialStatus();
 
         if (settings.LastLoad.HasWarning)
         {
@@ -153,6 +154,87 @@ public sealed partial class SettingsPage : Page
             UpdateSpinner.IsActive = false;
             UpdateSpinner.Visibility = Visibility.Collapsed;
             CheckUpdatesButton.IsEnabled = true;
+        }
+    }
+
+    private async void SaveTokenButton_Click(object sender, RoutedEventArgs e)
+    {
+        var token = TokenBox.Password;
+        SaveTokenButton.IsEnabled = false;
+        SignOutButton.IsEnabled = false;
+        TokenStatusText.Text = "Validating token…";
+
+        try
+        {
+            var result = await AppServices.GitHub.SaveAndValidateTokenAsync(token);
+            if (result.Succeeded && result.Data is not null)
+            {
+                TokenStatusText.Text = $"Signed in as {result.Data.Login}.";
+                ShowInfoBar(
+                    $"Token validated for {result.Data.Login} and stored securely. Repository access is checked separately.",
+                    InfoBarSeverity.Success);
+            }
+            else
+            {
+                TokenStatusText.Text = "Token was not saved.";
+                ShowInfoBar(result.Message ?? "GitHub could not validate the token.", InfoBarSeverity.Error);
+            }
+        }
+        catch (Exception)
+        {
+            LoggingService.Log.Warning("GitHub token validation or secure storage failed");
+            TokenStatusText.Text = "Credential storage is unavailable.";
+            ShowInfoBar("The token could not be validated or stored securely.", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            TokenBox.Password = string.Empty;
+            SaveTokenButton.IsEnabled = true;
+            RefreshGitHubCredentialStatus();
+        }
+    }
+
+    private async void SignOutButton_Click(object sender, RoutedEventArgs e)
+    {
+        SignOutButton.IsEnabled = false;
+        SaveTokenButton.IsEnabled = false;
+        try
+        {
+            await AppServices.GitHub.SignOutAsync();
+            TokenStatusText.Text = "Not signed in; public repository data can still be read.";
+            ShowInfoBar("GitHub token and cached repository data were removed.", InfoBarSeverity.Success);
+        }
+        catch (Exception)
+        {
+            LoggingService.Log.Warning("GitHub sign-out could not remove all local credential data");
+            ShowInfoBar("Sign-out could not remove all protected credential or cache data.", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            SaveTokenButton.IsEnabled = true;
+            RefreshGitHubCredentialStatus();
+        }
+    }
+
+    private void RefreshGitHubCredentialStatus()
+    {
+        try
+        {
+            var signedIn = AppServices.GitHub.HasToken;
+            SignOutButton.IsEnabled = signedIn;
+            if (!signedIn)
+            {
+                TokenStatusText.Text = "Not signed in; public repository data can still be read.";
+            }
+            else if (!TokenStatusText.Text.StartsWith("Signed in as ", StringComparison.Ordinal))
+            {
+                TokenStatusText.Text = "A protected token is stored; account details load on the GitHub page.";
+            }
+        }
+        catch (Exception)
+        {
+            SignOutButton.IsEnabled = false;
+            TokenStatusText.Text = "Secure credential storage is unavailable.";
         }
     }
 

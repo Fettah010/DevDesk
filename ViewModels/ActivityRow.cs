@@ -93,7 +93,9 @@ public sealed record ActivityRow(
 
     public bool CanStop => IsSession && Status is OperationStatus.Queued or OperationStatus.Running;
 
-    public bool CanRetry => IsSession && Status is OperationStatus.Succeeded or OperationStatus.Failed or OperationStatus.Canceled;
+    public bool CanRetry => IsSession
+        && Kind != OperationKind.Release
+        && Status is OperationStatus.Succeeded or OperationStatus.Failed or OperationStatus.Canceled;
 
     public bool HasLog => !string.IsNullOrWhiteSpace(LogPath);
 
@@ -127,6 +129,7 @@ public sealed record ActivityRow(
         OperationKind.Run => "Run",
         OperationKind.Publish => "Publish",
         OperationKind.Test => "Test",
+        OperationKind.Release => "Release",
         _ => "Operation",
     };
 

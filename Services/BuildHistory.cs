@@ -81,7 +81,8 @@ public sealed class BuildHistory
         {
             foreach (var entry in _entries)
             {
-                if (string.Equals(Normalize(entry.ProjectPath), wanted, StringComparison.OrdinalIgnoreCase))
+                if (entry.Kind != OperationKind.Release
+                    && string.Equals(Normalize(entry.ProjectPath), wanted, StringComparison.OrdinalIgnoreCase))
                 {
                     return entry;
                 }

@@ -9,6 +9,7 @@ public enum OperationKind
     Run,
     Publish,
     Test,
+    Release,
 }
 
 public enum OperationStatus
@@ -61,6 +62,7 @@ public sealed record Operation(
         OperationKind.Run => "Run",
         OperationKind.Publish => "Publish",
         OperationKind.Test => "Test",
+        OperationKind.Release => "Release",
         _ => "Operation",
     };
 

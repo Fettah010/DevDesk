@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DevDesk.Models;
 using DevDesk.Services;
@@ -7,6 +9,7 @@ using DevDesk.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.System;
 
 namespace DevDesk.Pages;
 
@@ -25,16 +28,128 @@ namespace DevDesk.Pages;
 public sealed partial class DevDeskPage : Page
 {
     private readonly BuildService _builds = AppServices.Builds;
+    private readonly GitService _git = new();
     private BuildSession? _session;
+    private CancellationTokenSource? _releaseTimelineCancellation;
 
     public DevDeskPage()
     {
         ViewModel = new SelfViewModel(AppServices.Catalog);
         this.InitializeComponent();
-        _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 
     public SelfViewModel ViewModel { get; }
+
+    private async void Page_Loaded(object sender, RoutedEventArgs e)
+    {
+        var cancellation = new CancellationTokenSource();
+        _releaseTimelineCancellation = cancellation;
+        try
+        {
+            await ViewModel.LoadCommand.ExecuteAsync(null);
+            await LoadReleaseTimelineAsync(cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            LoggingService.Log.Error(ex, "DevDesk release timeline could not be loaded");
+            ReleaseTimelineState.Text = "Release data could not be loaded.";
+        }
+        finally
+        {
+            if (ReferenceEquals(_releaseTimelineCancellation, cancellation))
+            {
+                _releaseTimelineCancellation = null;
+            }
+            cancellation.Dispose();
+        }
+    }
+
+    private void Page_Unloaded(object sender, RoutedEventArgs e) =>
+        _releaseTimelineCancellation?.Cancel();
+
+    private async Task LoadReleaseTimelineAsync(CancellationToken cancellationToken)
+    {
+        ReleaseTimelineItems.ItemsSource = null;
+        ReleaseTimelineItems.Visibility = Visibility.Collapsed;
+        OpenReleaseCockpitButton.IsEnabled = ViewModel.HasSelf;
+        if (ViewModel.Self is not { } self)
+        {
+            ReleaseTimelineState.Text = "Release timeline is unavailable because this is an installed build without a local checkout.";
+            return;
+        }
+
+        var remotes = await _git.GetRemotesAsync(self.Path, cancellationToken);
+        if (!remotes.Operation.Succeeded || remotes.Value is null)
+        {
+            ReleaseTimelineState.Text = "Release timeline unavailable: the local Git remotes could not be read.";
+            return;
+        }
+
+        var fetchRemote = remotes.Value.FirstOrDefault(remote =>
+                string.Equals(remote.Name, "origin", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(remote.Direction, "fetch", StringComparison.OrdinalIgnoreCase))
+            ?? remotes.Value.FirstOrDefault(remote =>
+                string.Equals(remote.Direction, "fetch", StringComparison.OrdinalIgnoreCase));
+        var identity = GitHubRepositoryIdentityParser.Parse(fetchRemote?.Url);
+        if (identity is not { SupportsPublicApi: true })
+        {
+            ReleaseTimelineState.Text = "Release timeline unavailable: no supported github.com fetch remote is configured.";
+            return;
+        }
+
+        var response = await AppServices.GitHub.GetReleasesAsync(identity, cancellationToken: cancellationToken);
+        var timeline = ReleaseTimeline.FromResult(response, AppServices.GitHub);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (timeline.Items.Count > 0)
+        {
+            ReleaseTimelineItems.ItemsSource = timeline.Items.Select(item => new ReleaseTimelineRow(
+                item.Channel,
+                item.Name,
+                $"{item.Version} · {item.PublishedAt?.ToLocalTime().ToString("g") ?? "date unavailable"}",
+                item.Url)).ToArray();
+            ReleaseTimelineItems.Visibility = Visibility.Visible;
+        }
+
+        var freshness = timeline.IsStale
+            ? $"Cached data from {timeline.FetchedAt?.ToLocalTime().ToString("g") ?? "an unknown time"} · stale."
+            : timeline.FetchedAt is { } fetchedAt
+                ? $"Checked {fetchedAt.ToLocalTime():g}."
+                : string.Empty;
+        ReleaseTimelineState.Text = string.Join(
+            " ",
+            new[] { timeline.Message, freshness }.Where(part => !string.IsNullOrWhiteSpace(part)));
+    }
+
+    private void OpenReleaseCockpitButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Frame.Navigate(typeof(GitHubPage)))
+        {
+            ShowWarning("Release cockpit unavailable", "The GitHub release page could not be opened.");
+        }
+    }
+
+    private async void ReleaseTimelineLink_Click(object sender, RoutedEventArgs e)
+    {
+        var value = (sender as FrameworkElement)?.Tag as string;
+        if (!AppServices.GitHub.TryCreateWebUri(value, out var uri) || uri is null)
+        {
+            ShowWarning("Release link unavailable", "GitHub returned a link that DevDesk will not open.");
+            return;
+        }
+
+        try
+        {
+            await Launcher.LaunchUriAsync(uri);
+        }
+        catch (Exception ex)
+        {
+            LoggingService.Log.Warning(ex, "Could not open a published DevDesk release");
+            ShowWarning("Could not open release", "The release page could not be opened in the browser.");
+        }
+    }
 
     private void OpenExplorerButton_Click(object sender, RoutedEventArgs e)
     {
@@ -257,4 +372,6 @@ public sealed partial class DevDeskPage : Page
         ActionBar.Message = message;
         ActionBar.IsOpen = true;
     }
+
+    private sealed record ReleaseTimelineRow(string Channel, string Title, string Detail, string Url);
 }

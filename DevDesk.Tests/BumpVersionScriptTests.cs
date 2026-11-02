@@ -43,6 +43,19 @@ public class BumpVersionScriptTests
     }
 
     [Fact]
+    public void Bump_NormalizesStableSuffixToCanonicalUnsuffixedVersion()
+    {
+        using var temp = new TempProject();
+        temp.Write(version: "0.1.0", suffix: "beta");
+
+        var exit = Run(temp.File, "0.2.0", suffix: "stable");
+
+        Assert.Equal(0, exit);
+        Assert.Equal("0.2.0", temp.Read().InformationalVersion);
+        Assert.Empty(temp.TemporaryArtifacts());
+    }
+
+    [Fact]
     public void Bump_IsIdempotent()
     {
         using var temp = new TempProject();
@@ -55,6 +68,7 @@ public class BumpVersionScriptTests
         var second = temp.Text();
 
         Assert.Equal(first, second);
+        Assert.Empty(temp.TemporaryArtifacts());
     }
 
     [Fact]
@@ -68,6 +82,115 @@ public class BumpVersionScriptTests
 
         Assert.NotEqual(0, exit);
         Assert.Equal(before, temp.Text());
+    }
+
+    [Theory]
+    [InlineData("01.2.3")]
+    [InlineData("1.02.3")]
+    [InlineData("1.2.03")]
+    public void Bump_RejectsLeadingZeroesWithoutChangingTheProject(string version)
+    {
+        using var temp = new TempProject();
+        temp.Write(version: "0.1.0", suffix: "beta");
+        var before = temp.Text();
+
+        var exit = Run(temp.File, version);
+
+        Assert.NotEqual(0, exit);
+        Assert.Equal(before, temp.Text());
+        Assert.Empty(temp.TemporaryArtifacts());
+    }
+
+    [Theory]
+    [InlineData("2147483648.0.0")]
+    [InlineData("0.2147483648.0")]
+    [InlineData("0.0.2147483648")]
+    public void Bump_RejectsComponentsOutsideTheSupportedRange(string version)
+    {
+        using var temp = new TempProject();
+        temp.Write(version: "0.1.0", suffix: "beta");
+        var before = temp.Text();
+
+        var exit = Run(temp.File, version);
+
+        Assert.NotEqual(0, exit);
+        Assert.Equal(before, temp.Text());
+        Assert.Empty(temp.TemporaryArtifacts());
+    }
+
+    [Theory]
+    [InlineData("alpha")]
+    [InlineData("nightly")]
+    [InlineData("beta2")]
+    public void Bump_RejectsUnsupportedChannelsWithoutChangingTheProject(string suffix)
+    {
+        using var temp = new TempProject();
+        temp.Write(version: "0.1.0", suffix: "beta");
+        var before = temp.Text();
+
+        var exit = Run(temp.File, "0.2.0", suffix);
+
+        Assert.NotEqual(0, exit);
+        Assert.Equal(before, temp.Text());
+        Assert.Empty(temp.TemporaryArtifacts());
+    }
+
+    [Fact]
+    public void Bump_RejectsDuplicateVersionPropertyWithoutChangingTheProject()
+    {
+        using var temp = new TempProject();
+        temp.Write(version: "0.1.0", suffix: "beta");
+        var before = temp.Text().Replace(
+            "    <Version>0.1.0</Version>",
+            "    <Version>0.1.0</Version>\n    <Version>0.1.1</Version>",
+            StringComparison.Ordinal);
+        temp.WriteText(before);
+
+        var exit = Run(temp.File, "0.2.0");
+
+        Assert.NotEqual(0, exit);
+        Assert.Equal(before, temp.Text());
+        Assert.Empty(temp.TemporaryArtifacts());
+    }
+
+    [Fact]
+    public void Bump_RejectsMissingVersionFieldWithoutChangingTheProject()
+    {
+        using var temp = new TempProject();
+        temp.Write(version: "0.1.0", suffix: "beta");
+        var before = temp.Text().Replace(
+            "    <FileVersion>0.1.0.0</FileVersion>\n",
+            string.Empty,
+            StringComparison.Ordinal);
+        temp.WriteText(before);
+
+        var exit = Run(temp.File, "0.2.0");
+
+        Assert.NotEqual(0, exit);
+        Assert.Equal(before, temp.Text());
+        Assert.Empty(temp.TemporaryArtifacts());
+    }
+
+    [Fact]
+    public void Bump_PreservesUtf8BomAndCrLfLineEndings()
+    {
+        using var temp = new TempProject();
+        temp.Write(version: "0.1.0", suffix: "beta");
+        var text = temp.Text().Replace("\n", "\r\n", StringComparison.Ordinal);
+        var encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        System.IO.File.WriteAllText(temp.File, text, encoding);
+
+        var exit = Run(temp.File, "0.2.0");
+
+        Assert.Equal(0, exit);
+        Assert.Equal(
+            new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetPreamble(),
+            System.IO.File.ReadAllBytes(temp.File)[..3]);
+        var updated = temp.Text();
+        Assert.Contains("\r\n", updated);
+        Assert.DoesNotContain("\n", updated.Replace("\r\n", string.Empty, StringComparison.Ordinal));
+        Assert.Equal("0.2.0-beta", temp.Read().InformationalVersion);
+        Assert.Empty(temp.TemporaryArtifacts());
     }
 
     private static int Run(string projectFile, string version, string? suffix = null)
@@ -110,6 +233,11 @@ public class BumpVersionScriptTests
         }
 
         public string Text() => System.IO.File.ReadAllText(File);
+
+        public void WriteText(string text) => System.IO.File.WriteAllText(File, text);
+
+        public string[] TemporaryArtifacts() =>
+            Directory.GetFiles(_dir, ".DevDesk.csproj.*");
 
         public (string Version, string AssemblyVersion, string FileVersion, string InformationalVersion) Read()
         {

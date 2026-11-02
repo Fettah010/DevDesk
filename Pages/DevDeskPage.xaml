@@ -7,7 +7,9 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:DevDesk.Models"
     xmlns:controls="using:DevDesk.Controls"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    Loaded="Page_Loaded"
+    Unloaded="Page_Unloaded">
 
     <Page.Resources>
         <DataTemplate x:Key="CommitTemplate" x:DataType="models:CommitInfo">
@@ -45,10 +47,15 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Header -->
         <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
             <StackPanel Spacing="2">
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <TextBlock Text="DevDesk" Style="{ThemeResource TitleTextBlockStyle}" FontWeight="SemiBold"/>
@@ -257,6 +264,85 @@
         <Border
             Grid.Row="4"
             Style="{StaticResource DevCardStyle}"
+            Padding="18,14">
+            <Grid RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="RELEASES" Style="{ThemeResource CaptionTextBlockStyle}" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                        <TextBlock Text="Latest published release for each supported channel" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                    </StackPanel>
+                    <Button
+                        x:Name="OpenReleaseCockpitButton"
+                        Grid.Column="1"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Content="Release cockpit"
+                        CornerRadius="8"
+                        Click="OpenReleaseCockpitButton_Click"
+                        AutomationProperties.Name="Open the GitHub release cockpit for DevDesk"/>
+                </Grid>
+                <TextBlock
+                    x:Name="ReleaseTimelineState"
+                    Grid.Row="1"
+                    Text="Release data loads when this page is open."
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap"/>
+                <ItemsControl
+                    x:Name="ReleaseTimelineItems"
+                    Grid.Row="2"
+                    Visibility="Collapsed">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnSpacing="10" Margin="0,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border
+                                    CornerRadius="6"
+                                    Padding="7,2"
+                                    Background="{ThemeResource SeaBlueSoftBrush}"
+                                    VerticalAlignment="Center">
+                                    <TextBlock
+                                        Text="{Binding Channel}"
+                                        Foreground="{ThemeResource SeaBlueBrush}"
+                                        FontSize="11"
+                                        FontWeight="SemiBold"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="1">
+                                    <TextBlock Text="{Binding Title}" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                                    <TextBlock
+                                        Text="{Binding Detail}"
+                                        Style="{ThemeResource CaptionTextBlockStyle}"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                                <HyperlinkButton
+                                    Grid.Column="2"
+                                    Content="Open"
+                                    Tag="{Binding Url}"
+                                    Click="ReleaseTimelineLink_Click"
+                                    AutomationProperties.Name="Open this published GitHub release"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </Border>
+
+        <Border
+            Grid.Row="5"
+            Style="{StaticResource DevCardStyle}"
             Padding="18,16"
             Visibility="{x:Bind ViewModel.ComponentsVisibility, Mode=OneWay}"
             x:Name="ComponentsCard">
@@ -298,7 +384,7 @@
         <!-- Loading overlay for the shared scan. -->
         <Grid
             x:Name="BusyOverlay"
-            Grid.RowSpan="5"
+            Grid.RowSpan="6"
             Visibility="{x:Bind ViewModel.BusyVisibility, Mode=OneWay}"
             Background="{ThemeResource LayerFillColorDefaultBrush}"
             Opacity="0.9">

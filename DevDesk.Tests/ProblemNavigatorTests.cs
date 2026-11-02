@@ -5,12 +5,18 @@ using Xunit;
 
 namespace DevDesk.Tests;
 
+[CollectionDefinition("Environment-mutating", DisableParallelization = true)]
+public sealed class EnvironmentMutatingCollection
+{
+}
+
 /// <summary>
 /// The jump is best-effort, the location is not. These cases pin the order
 /// (VS Code, then Visual Studio, then the default app) and the fact that the
 /// line and column survive into the argument list instead of being folded into a
 /// command string.
 /// </summary>
+[Collection("Environment-mutating")]
 public class ProblemNavigatorTests
 {
     private static BuildProblem Problem(int? line = 12, int? column = 5) =>

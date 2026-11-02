@@ -39,6 +39,7 @@ public sealed record BuildRecord(
                 OperationKind.Run => "run",
                 OperationKind.Publish => "publish",
                 OperationKind.Test => "test",
+                OperationKind.Release => "release",
                 _ => "build",
             };
 

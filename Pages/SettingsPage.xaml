@@ -92,27 +92,35 @@
                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                     Margin="0,12,0,0"/>
 
-                <!-- Nothing is stored yet, so the box and the button are disabled:
-                     a token field that accepts a token and forgets it is worse than
-                     no field at all. -->
                 <ctk:SettingsCard
                     Header="Personal access token"
-                    Description="Arrives in v0.5.0 — it will live in Windows Credential Manager, never in settings.json or the logs.">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    Description="Optional. Stored in Windows Credential Manager or protected with your Windows account; never in settings.json or logs. For private repositories, use a fine-grained token with repository Metadata, Contents, Actions, Pull requests and Checks set to read-only as needed.">
+                    <StackPanel Spacing="8" VerticalAlignment="Center">
                         <PasswordBox
                             x:Name="TokenBox"
-                            Width="220"
-                            PlaceholderText="ghp_…"
-                            IsEnabled="False"
+                            Width="300"
+                            PlaceholderText="Paste a GitHub token"
                             VerticalAlignment="Center"
-                            AutomationProperties.Name="Personal access token (arrives in v0.5.0)"/>
-                        <Button
-                            x:Name="SaveTokenButton"
-                            Content="Save"
-                            CornerRadius="8"
-                            IsEnabled="False"
-                            AutomationProperties.Name="Save token (arrives in v0.5.0)"
-                            ToolTipService.ToolTip="Token storage arrives in v0.5.0"/>
+                            AutomationProperties.Name="GitHub personal access token"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                x:Name="SaveTokenButton"
+                                Content="Validate and save"
+                                CornerRadius="8"
+                                Click="SaveTokenButton_Click"/>
+                            <Button
+                                x:Name="SignOutButton"
+                                Content="Sign out"
+                                CornerRadius="8"
+                                IsEnabled="False"
+                                Click="SignOutButton_Click"/>
+                            <TextBlock
+                                x:Name="TokenStatusText"
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                VerticalAlignment="Center"
+                                Text="Not signed in; public repository data can still be read."/>
+                        </StackPanel>
                     </StackPanel>
                 </ctk:SettingsCard>
 

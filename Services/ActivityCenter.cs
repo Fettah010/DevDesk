@@ -227,6 +227,11 @@ public sealed class ActivityCenter
                 return null;
             }
 
+            if (entry.Request.Kind == OperationKind.Release)
+            {
+                return null;
+            }
+
             request = entry.Request;
         }
 

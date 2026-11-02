@@ -70,11 +70,21 @@ if ([string]::IsNullOrWhiteSpace($Tag)) {
     $Tag = if ($declaredSuffix) { "v$declaredNumeric-$declaredSuffix" } else { "v$declaredNumeric" }
 }
 
-if ($Tag -notmatch '^v?(\d+\.\d+\.\d+)(?:-([A-Za-z0-9]+))?$') {
+if ($Tag -notmatch '^v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))(?:-([A-Za-z0-9]+))?$') {
     throw "Tag '$Tag' is not of the form vX.Y.Z[-channel]."
 }
 $tagVersion = $Matches[1]
-$tagSuffix = if ($Matches[2]) { $Matches[2].ToLowerInvariant() } else { "" }
+$tagSuffix = if ($Matches[5]) { $Matches[5].ToLowerInvariant() } else { "" }
+foreach ($component in $tagVersion.Split(".")) {
+    $parsedComponent = 0
+    if (-not [int]::TryParse(
+            $component,
+            [System.Globalization.NumberStyles]::None,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [ref]$parsedComponent)) {
+        throw "Tag '$Tag' contains a version component outside the supported numeric range."
+    }
+}
 
 $resolvedChannel = switch ($tagSuffix) {
     ""       { "stable" }

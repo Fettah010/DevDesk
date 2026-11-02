@@ -99,6 +99,46 @@ public class ReleaseConfigTests
         Assert.Contains("dotnet tool restore", text, StringComparison.Ordinal);
         Assert.DoesNotContain("dotnet tool install --global", text, StringComparison.Ordinal);
         Assert.DoesNotContain("alpha", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            @"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(beta|dev))?$",
+            text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Workflow_PreservesCommittedReleaseNotesAndFailsOnAnEmptyFile()
+    {
+        var text = File.ReadAllText(RepoLayout.Path(".github", "workflows", "release.yml"));
+
+        Assert.Contains("if (Test-Path -LiteralPath ReleaseNotes.md -PathType Leaf)", text, StringComparison.Ordinal);
+        Assert.Contains("Get-Content -LiteralPath ReleaseNotes.md -Raw", text, StringComparison.Ordinal);
+        Assert.Contains("ReleaseNotes.md exists but is empty", text, StringComparison.Ordinal);
+        Assert.Contains("Set-Content -LiteralPath ReleaseNotes.md", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReleaseScripts_UseCanonicalNumericTagsAndBoundedComponents()
+    {
+        var scripts = new[]
+        {
+            File.ReadAllText(RepoLayout.Path("Scripts", "build-and-release.ps1")),
+            File.ReadAllText(RepoLayout.Path("Scripts", "upload-github.ps1")),
+            File.ReadAllText(RepoLayout.Path("Scripts", "bump-version.ps1")),
+        };
+
+        Assert.All(scripts, text =>
+        {
+            Assert.Contains("[System.Globalization.NumberStyles]::None", text, StringComparison.Ordinal);
+            Assert.Contains("[int]::TryParse", text, StringComparison.Ordinal);
+        });
+        Assert.Contains(
+            @"^v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))(?:-([A-Za-z0-9]+))?$",
+            scripts[0],
+            StringComparison.Ordinal);
+        Assert.Contains(
+            @"^v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))(?:-([A-Za-z0-9]+))?$",
+            scripts[1],
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -142,6 +182,9 @@ public class ReleaseConfigTests
     [InlineData("-Version", "9.9.9")]
     [InlineData("-Tag", "v9.9.9-beta")]
     [InlineData("-Tag", "v0.1.0-alpha")]
+    [InlineData("-Tag", "v01.2.3-beta")]
+    [InlineData("-Tag", "v1.2.3.4")]
+    [InlineData("-Tag", "v2147483648.0.0")]
     public void Release_RefusesAVersionOrChannelTheAppDoesNotReport(string flag, string value)
     {
         var result = PowerShellRunner.Run(

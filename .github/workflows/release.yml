@@ -106,8 +106,19 @@ jobs:
           $tag = if ("${{ github.event_name }}" -eq "push") { "${{ github.ref_name }}" } else { "${{ inputs.tag }}" }
           $tag = $tag.Trim()
           if ([string]::IsNullOrWhiteSpace($tag)) { throw "Could not determine the release tag." }
-          if ($tag -notmatch '^v\d+\.\d+\.\d+(-(beta|dev))?$') {
+          if ($tag -notmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(beta|dev))?$') {
             throw "Tag '$tag' must look like vX.Y.Z, vX.Y.Z-beta or vX.Y.Z-dev."
+          }
+          $numericVersion = $tag.Substring(1) -replace '-(beta|dev)$', ''
+          foreach ($component in $numericVersion.Split('.')) {
+            $parsedComponent = 0
+            if (-not [int]::TryParse(
+                $component,
+                [System.Globalization.NumberStyles]::None,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [ref]$parsedComponent)) {
+              throw "Tag '$tag' contains a version component outside the supported numeric range."
+            }
           }
           Write-Output "tag=$tag" >> $env:GITHUB_OUTPUT
 
@@ -159,14 +170,23 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
         run: |
-          $notes = @(
-            "## DevDesk $env:TAG",
-            "",
-            "Automated release built from commit ``$env:SHA``.",
-            "",
-            "For a full list of changes, see the [commits](https://github.com/$env:REPO/commits/$env:TAG)."
-          )
-          Set-Content -Path ReleaseNotes.md -Value $notes
+          if (Test-Path -LiteralPath ReleaseNotes.md -PathType Leaf) {
+            $notes = Get-Content -LiteralPath ReleaseNotes.md -Raw
+            if ([string]::IsNullOrWhiteSpace($notes)) {
+              throw "ReleaseNotes.md exists but is empty. Add release notes before tagging."
+            }
+            Write-Output "Using the committed release notes in ReleaseNotes.md."
+          }
+          else {
+            $notes = @(
+              "## DevDesk $env:TAG",
+              "",
+              "Automated release built from commit ``$env:SHA``.",
+              "",
+              "For a full list of changes, see the [commits](https://github.com/$env:REPO/commits/$env:TAG)."
+            )
+            Set-Content -LiteralPath ReleaseNotes.md -Value $notes
+          }
 
       - name: Build, pack & upload
         shell: pwsh

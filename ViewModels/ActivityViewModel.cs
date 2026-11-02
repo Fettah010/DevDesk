@@ -26,7 +26,7 @@ public sealed partial class ActivityViewModel : ObservableObject
     public const string AllKinds = "All kinds";
 
     private static readonly IReadOnlyList<string> KindChoices =
-        new[] { AllKinds, "Build", "Run", "Publish", "Test" };
+        new[] { AllKinds, "Build", "Run", "Publish", "Test", "Release" };
 
     private readonly ActivityCenter _center;
     private readonly BuildHistory _history;
@@ -151,7 +151,7 @@ public sealed partial class ActivityViewModel : ObservableObject
         SummaryText = Summarize();
         EmptyVisibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         EmptyText = _all.Count == 0
-            ? "Nothing has run yet. Build, run, publish or test a project and it appears here — newest first."
+            ? "Nothing has run yet. Build, run, publish, test or prepare a release and it appears here — newest first."
             : "No run matches this filter. Choose another project or kind.";
     }
 

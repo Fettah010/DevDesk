@@ -288,6 +288,82 @@ public sealed class GitService
             : await RunNetworkAsync(repositoryPath, cancellationToken, "push", "origin", branch.Output.Trim()).ConfigureAwait(false);
     }
 
+    public async Task<GitOperationResult> PushTagAsync(
+        string repositoryPath,
+        string remoteName,
+        string tagName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(remoteName)
+            || remoteName.StartsWith("-", StringComparison.Ordinal))
+        {
+            return InvalidTagPush("Select a configured remote.");
+        }
+
+        var validTag = await RunAsync(
+            repositoryPath,
+            cancellationToken,
+            "check-ref-format",
+            "refs/tags/" + tagName).ConfigureAwait(false);
+        if (!validTag.Succeeded)
+        {
+            return InvalidTagPush("The tag name is invalid.");
+        }
+
+        var remotes = await GetRemotesAsync(repositoryPath, cancellationToken).ConfigureAwait(false);
+        if (!remotes.Operation.Succeeded)
+        {
+            return remotes.Operation;
+        }
+
+        if (remotes.Value is null || !remotes.Value.Any(remote =>
+                string.Equals(remote.Name, remoteName, StringComparison.Ordinal)))
+        {
+            return InvalidTagPush("The selected remote is not configured in this repository.");
+        }
+
+        var localTag = await RunAsync(
+            repositoryPath,
+            cancellationToken,
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/tags/" + tagName).ConfigureAwait(false);
+        if (!localTag.Succeeded)
+        {
+            return InvalidTagPush("The release tag does not exist locally.");
+        }
+
+        var remoteTag = await RunNetworkAsync(
+            repositoryPath,
+            cancellationToken,
+            "ls-remote",
+            "--tags",
+            "--",
+            remoteName,
+            "refs/tags/" + tagName).ConfigureAwait(false);
+        if (!remoteTag.Succeeded)
+        {
+            return remoteTag;
+        }
+
+        if (!string.IsNullOrWhiteSpace(remoteTag.Output))
+        {
+            return InvalidTagPush("That tag already exists on the remote. DevDesk will not move or replace it.");
+        }
+
+        return await RunNetworkAsync(
+            repositoryPath,
+            cancellationToken,
+            "push",
+            "--",
+            remoteName,
+            $"refs/tags/{tagName}:refs/tags/{tagName}").ConfigureAwait(false);
+    }
+
+    private static GitOperationResult InvalidTagPush(string message) =>
+        new(false, GitFailureKind.Other, -1, string.Empty, message);
+
     public Task<GitOperationResult> CreateBranchAsync(string repositoryPath, string name, CancellationToken cancellationToken = default) =>
         RunBranchAsync(repositoryPath, name, cancellationToken, "switch", "-c");
 

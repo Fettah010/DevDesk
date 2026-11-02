@@ -9,12 +9,16 @@ using DevDesk.Models;
 
 namespace DevDesk.Services;
 
-/// <summary>Outcome of a scan: the project list and the self repo as its own workspace.</summary>
+/// <summary>Outcome of a scan: the project list, the self repo as its own workspace,
+/// and the template repositories discovered by marker.</summary>
 public sealed class ScannerResult
 {
     public ProjectModel? Self { get; init; }
 
     public IReadOnlyList<ProjectModel> Projects { get; init; } = Array.Empty<ProjectModel>();
+
+    /// <summary>Template repositories found during the same walk (read-only data).</summary>
+    public IReadOnlyList<TemplateDescriptor> Templates { get; init; } = Array.Empty<TemplateDescriptor>();
 }
 
 /// <summary>
@@ -77,6 +81,14 @@ public sealed class ScanEngine : IScanEngine
         ".sln", ".slnx", ".csproj", ".vcxproj", ".fsproj", ".vbproj",
     };
 
+    // Template marker files that identify a template repository
+    private static readonly string[] TemplateMarkers =
+    {
+        "App.xaml",
+        @"Assets\app.ico",
+        @"Scripts\build-and-release.ps1",
+    };
+
     private readonly string _root;
     private readonly string? _selfPath;
     private readonly int _maxDepth;
@@ -111,9 +123,10 @@ public sealed class ScanEngine : IScanEngine
         IProgress<ScanProgress>? progress = null)
     {
         var candidates = new List<string>();
+        var templateCandidates = new List<string>();
         if (Directory.Exists(_root))
         {
-            Collect(_root, 1, candidates, cancellationToken, progress);
+            Collect(_root, 1, candidates, templateCandidates, cancellationToken, progress);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -123,6 +136,13 @@ public sealed class ScanEngine : IScanEngine
         var selfTask = _selfPath is not null && PathHygiene.IsRepositoryRoot(_selfPath)
             ? BuildModelAsync(_selfPath, forceWorkspace: true, cancellationToken)
             : Task.FromResult<ProjectModel?>(null);
+
+        // Template descriptors are cheap: read the csproj once each, no git.
+        var templates = new TemplateDescriptor[templateCandidates.Count];
+        for (var i = 0; i < templates.Length; i++)
+        {
+            templates[i] = ReadTemplateDescriptor(templateCandidates[i]);
+        }
 
         var models = new ProjectModel?[candidates.Count];
         var completed = 0;
@@ -156,17 +176,19 @@ public sealed class ScanEngine : IScanEngine
         // The array is indexed by candidate order, so the result is stable even
         // though the repos are read concurrently.
         var projects = models.Where(m => m is not null).Select(m => m!).ToList();
-        return new ScannerResult { Self = self, Projects = projects };
+        return new ScannerResult { Self = self, Projects = projects, Templates = templates };
     }
 
     /// <summary>
     /// Collects candidate folders without reading any git state. Discovery is
     /// ordered, so the same disk always produces the same card order.
+    /// Also collects template candidates that match the template marker pattern.
     /// </summary>
     private void Collect(
         string directory,
         int depth,
         List<string> candidates,
+        List<string> templateCandidates,
         CancellationToken cancellationToken,
         IProgress<ScanProgress>? progress)
     {
@@ -187,9 +209,16 @@ public sealed class ScanEngine : IScanEngine
                 continue;
             }
 
+            if (HasTemplateMarker(child))
+            {
+                templateCandidates.Add(child);
+                progress?.Report(new ScanProgress(0, 0, name + " (template)"));
+                continue;
+            }
+
             if (depth < _maxDepth)
             {
-                Collect(child, depth + 1, candidates, cancellationToken, progress);
+                Collect(child, depth + 1, candidates, templateCandidates, cancellationToken, progress);
             }
         }
     }
@@ -206,6 +235,66 @@ public sealed class ScanEngine : IScanEngine
 
     private static bool IsMarker(string file) =>
         MarkerExtensions.Any(ext => file.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>A folder is a template when it carries a project marker and the
+    /// template marker files (App.xaml, Assets/app.ico, Scripts/build-and-release.ps1).</summary>
+    private static bool HasTemplateMarker(string directory) =>
+        HasProjectMarker(directory) && TemplateMarkers.All(marker =>
+            File.Exists(Path.Combine(directory, marker)));
+
+    /// <summary>Reads a template's identity from its csproj: Name (AssemblyName
+    /// or folder name), Description, and Version. Never throws — a bad csproj
+    /// yields a safe fallback rather than crashing the scan.</summary>
+    private static TemplateDescriptor ReadTemplateDescriptor(string templatePath)
+    {
+        var folderName = Path.GetFileName(templatePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        string? assemblyName = null;
+        string? description = null;
+        string? version = null;
+
+        var projectFile = PathHygiene.SafeEnumerateFiles(templatePath)
+            .FirstOrDefault(f => f.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase));
+
+        if (projectFile is not null)
+        {
+            string content;
+            try
+            {
+                content = File.ReadAllText(projectFile);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return new TemplateDescriptor
+                {
+                    Name = folderName,
+                    Description = string.Empty,
+                    Version = "—",
+                    FullPath = templatePath,
+                };
+            }
+
+            // Read with explicit captures for clarity.
+            assemblyName = CaptureCsproj(content, "AssemblyName") ?? assemblyName;
+            description = CaptureCsproj(content, "Description") ?? description;
+            version = CaptureCsproj(content, "Version") ?? version;
+        }
+
+        return new TemplateDescriptor
+        {
+            Name = string.IsNullOrWhiteSpace(assemblyName) ? folderName : assemblyName!,
+            Description = description ?? string.Empty,
+            Version = version ?? "—",
+            FullPath = templatePath,
+        };
+    }
+
+    private static string? CaptureCsproj(string content, string tag)
+    {
+        var match = Regex.Match(content, @$"<{tag}>\s*(?<value>[^<]+?)\s*</{tag}>",
+            RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups["value"].Value.Trim() : null;
+    }
 
     private async Task<ProjectModel?> BuildModelAsync(
         string repoPath,

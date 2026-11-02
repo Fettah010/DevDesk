@@ -17,17 +17,20 @@ public sealed class CatalogSnapshot
     public static CatalogSnapshot Empty { get; } = new(
         Array.Empty<ProjectModel>(),
         null,
+        templates: Array.Empty<TemplateDescriptor>(),
         DateTimeOffset.MinValue,
         TimeSpan.Zero);
 
     public CatalogSnapshot(
         IEnumerable<ProjectModel> projects,
         ProjectModel? self,
-        DateTimeOffset capturedAt,
-        TimeSpan duration)
+        IEnumerable<TemplateDescriptor>? templates = null,
+        DateTimeOffset capturedAt = default,
+        TimeSpan duration = default)
     {
         Projects = new ReadOnlyCollection<ProjectModel>(new List<ProjectModel>(projects));
         Self = self;
+        Templates = new ReadOnlyCollection<TemplateDescriptor>(new List<TemplateDescriptor>(templates ?? Array.Empty<TemplateDescriptor>()));
         CapturedAt = capturedAt;
         Duration = duration;
     }
@@ -37,11 +40,14 @@ public sealed class CatalogSnapshot
     /// <summary>The DevDesk checkout as its own workspace; null when not found.</summary>
     public ProjectModel? Self { get; }
 
+    /// <summary>Template repositories discovered during the scan (read-only data).</summary>
+    public IReadOnlyList<TemplateDescriptor> Templates { get; }
+
     public DateTimeOffset CapturedAt { get; }
 
     public TimeSpan Duration { get; }
 
-    public bool IsEmpty => Projects.Count == 0 && Self is null;
+    public bool IsEmpty => Projects.Count == 0 && Self is null && Templates.Count == 0;
 
     public int CleanCount => Count(p => p.RemoteOk && !p.Dirty && !p.BehindUpstream);
 
@@ -179,7 +185,7 @@ public sealed class ProjectCatalog
             }
 
             if (!projectFound) return false;
-            next = new CatalogSnapshot(projects, self, _snapshot.CapturedAt, _snapshot.Duration);
+            next = new CatalogSnapshot(projects, self, _snapshot.Templates, _snapshot.CapturedAt, _snapshot.Duration);
             _snapshot = next;
         }
 
@@ -242,6 +248,7 @@ public sealed class ProjectCatalog
             var snapshot = new CatalogSnapshot(
                 result.Projects,
                 result.Self,
+                result.Templates,
                 DateTimeOffset.Now,
                 elapsed);
 
@@ -260,10 +267,11 @@ public sealed class ProjectCatalog
 
             var scan = Volatile.Read(ref _scanCount);
             LoggingService.Log.Information(
-                "Catalog scan #{Scan} finished in {Elapsed} ms: {Projects} project(s), self {Self}",
+                "Catalog scan #{Scan} finished in {Elapsed} ms: {Projects} project(s), {Templates} template(s), self {Self}",
                 scan,
                 (long)elapsed.TotalMilliseconds,
                 snapshot.Projects.Count,
+                snapshot.Templates.Count,
                 snapshot.Self?.Name ?? "not found");
 
             Changed?.Invoke(this, snapshot);
