@@ -27,6 +27,9 @@ v0.4.0, GitHubService → v0.5.0) are labelled, not faked. The map is
 `docs\DEVDESK-ROADMAP.md`; each version's work order and evidence log is in
 `docs\versions\`.
 
+The v0.7.0 work order is now being implemented on `main`; it is not release
+ready. Its acceptance gaps and evidence are tracked in `docs\versions\V0.7.0.md`.
+
 ## Ecosystem layout (this app does not live alone)
 
 Everything related lives in **`C:\Code\projects\DevEcosystem`**; other folders
@@ -36,6 +39,7 @@ in `C:\Code\projects` are unrelated and must not be touched.
 C:\Code\projects\DevEcosystem\
   DevDesk\              # THIS app (own local git repo)
     DevDesk.Tests\      # xunit tests — inside the DevDesk repo, own project
+    DevDesk.UiTests\    # opt-in FlaUI UI tests; not part of headless CI
     docs\DEVDESK-ROADMAP.md  # the map (versions, findings, decisions)
     docs\versions\      # per-version work orders + evidence log
   DevTem WinUI 3\       # the template (own git repo, remote: Fettah010/winui-3-easy-template)
@@ -101,14 +105,17 @@ dotnet build -c Debug -p:Platform=x64
 
 ## Tests
 
-- Tests live in **`DevDesk\DevDesk.Tests`** — inside the DevDesk repo (own
+- Headless tests live in **`DevDesk\DevDesk.Tests`** — inside the DevDesk repo (own
   project), by design, since "every project owns its folder". The tests
   compile from the same repo without being mixed into the app build
   (`<DefaultItemExcludes>` in `DevDesk.csproj`).
 - They cover logic, not pixels: `Models/ProjectModel.cs`, the scan pipeline
   (`Services/ScanEngine.cs`, `PathHygiene`, `SelfLocator` — built against temp
-  git repos, requires git), `ProjectCatalog` (one scan shared by every page),
-  `ProjectOpenActions` (marker discovery), `WindowPlacement`, `Routes`,
+  git repos, requires git), ordered ignore rules, root cache/catalog freshness,
+  root watcher debounce and checkout-targeted refresh, multi-root settings, project search/sorting and
+  organization persistence, workspace-target discovery, `ProjectCatalog` (one
+  scan shared by every page), `ProjectOpenActions` (marker discovery),
+  `WindowPlacement`, `Routes`,
   `UpdateService` (plus a source-level guard against blocking calls),
   `SettingsService`/`SettingsMigration`, `LogRedaction`/`LogRingBufferSink`/
   `DiagnosticsExport`, `ReleaseChannels`, the version/release-config guards, and
@@ -126,11 +133,14 @@ dotnet test DevDesk.Tests -p:Platform=x64          # from DevDesk\
 dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 ```
 
-- The DAILY check is `.\Scripts\ci.ps1` (Release build + full suite at x64 — the
-  same two commands CI runs; `-Configuration Debug` if you want debug bits).
-  `dotnet build -p:Platform=x64` + `dotnet test -p:Platform=x64` is the
-  equivalent by hand. Keep tests in `DevDesk.Tests/` — never add files directly
-  under the app project folders.
+- FlaUI tests are a separate interactive-desktop check, never part of ordinary
+  headless CI: `.\Scripts\ui-tests.ps1 -Configuration Debug`. They launch the
+  built app with an isolated `DEVDESK_DATA_DIR`.
+- The DAILY check is `.\Scripts\ci.ps1` (restore once, build the test project
+  and app reference once, then run tests without rebuilding). CI and the script
+  use the same commands; use `-Configuration Debug` for debug bits. Keep service
+  tests in `DevDesk.Tests/` and desktop UI automation in `DevDesk.UiTests/` —
+  never add test files directly under app source folders.
 
 ## Layout / key files
 
@@ -141,9 +151,12 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `App.xaml.cs` | UI-thread exception logging + background auto-update check (Velopack, skipped when not installed). |
 | `MainWindow.xaml(.cs)` | Mica backdrop, custom title bar, theme-cycle button (left of the title — must never sit under the OS caption buttons), NavigationView → Dashboard/Projects/Templates/GitHub/DevDesk/Settings/Diagnostics. |
 | `Models/ProjectModel.cs` | Project/Workspace card model + `CommitInfo` + `ComponentInfo`. |
-| `Services/ScanEngine.cs` | The scanner — walks the scan root (depth 2), detects repos by `.git`/project marker, reads branch, dirty/behind, remote host, last 3 commits, and csproj version (with 3-field sync check). Never lists DevDesk; returns it as the self workspace. |
-| `Services/ProjectCatalog.cs` / `AppServices.cs` | The in-session snapshot: one scan, joined by every page (`GetOrRefreshAsync`); `AppServices` is the service graph for pages with parameterless constructors. |
-| `Services/PathHygiene.cs` / `SelfLocator.cs` | What is never walked (bin/obj/.vs/Logs/worktrees) and how DevDesk finds its own repo. |
+| `Services/ScanEngine.cs` | The scanner — walks enabled roots at their configured depths with ordered ignores, detects repos by `.git`/project marker, resolves checkout identity and reads branch, dirty/behind, remote host, last 3 commits, and csproj version. Supports a single known-checkout refresh. Never lists DevDesk; returns it as the self workspace. |
+| `Services/ProjectCatalog.cs` / `AppServices.cs` | The in-session snapshot: one scan, joined by every page (`GetOrRefreshAsync`), with targeted checkout and root reconciliation refreshes; `AppServices` is the service graph for pages with parameterless constructors. |
+| `Services/PathHygiene.cs` / `IgnoreRuleMatcher.cs` / `SelfLocator.cs` | Protected Git/reparse-point safety, root-relative ordered excludes/negation, hygiene folders, and how DevDesk finds its own repo. |
+| `Services/ScanCacheStore.cs` / `ProjectRootWatcher.cs` | Atomic schema-v2 scan cache with visible freshness, plus debounced checkout-targeted invalidation and root reconciliation fallback with partial-root retention. |
+| `Services/ProjectOrganizationStore.cs` / `ProjectListQuery.cs` | Separately persisted pins, coloured tags, saved views, archive preference/reversible project state, recent opens, and deterministic in-memory search/sorting. |
+| `Services/WorkspaceTargetDiscovery.cs` | Bounded, link-safe solution/project discovery for a selected repository. |
 | `Services/GitRunner.cs` | Safe git process runner — argument lists only, output redirection, timeout, cancellation, non-interactive; git failure never throws (exit-code path). |
 | `Services/GitService.cs` / `GitStatusParser.cs` | Typed read/write boundary over `GitRunner`: structured failures, credential redaction, detailed Git state, and explicit stage/commit/fetch/pull/push/branch/tag/conflict operations. UI writes require previews and confirmations. |
 | `Services/ProjectOpenActions.cs` | Open-in-Explorer / reveal-in-Explorer / open-with-default-app (ShellExecute) + solution/project marker finder — all argument-list safe, never throws. |
@@ -153,7 +166,7 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `Services/LoggingService.cs` | Serilog to `%LocalAppData%\DevDesk\Logs\applog-YYYYMMDD.log` (14 days) **plus** an in-memory ring (`LoggingService.Ring`, 2000 events) that Diagnostics reads; `DEVDESK_DATA_DIR` moves both settings and logs. |
 | `Services/LogRedaction.cs` / `RedactingTextFormatter.cs` / `DiagnosticsExport.cs` | Credential redaction on the way to disk and into the zip; the export bundle (`logs/`, `environment.txt`, `settings.redacted.json`, `manifest.json`). |
 | `Services/UpdateService.cs` / `AppInfo.cs` / `ReleaseChannels.cs` | Velopack wrapper (async only — never block the UI thread), version accessors, and the one tag→channel vocabulary. |
-| `Services/PerfCounters.cs` / `StartupTimeline.cs` | What makes "fast" a measurement (roadmap F18): `Interlocked` counters plus the last duration of every scan / update check / settings write / build-family process, and the startup marks (process start → logging → Velopack → settings → window shown → first snapshot) measured from one origin and logged once each at `INF`. The budgets live in `PerfBudgets`. |
+| `Services/PerfCounters.cs` / `StartupTimeline.cs` / `UiThreadHeartbeat.cs` | What makes "fast" a measurement (roadmap F18): `Interlocked` counters plus the last duration of every scan / update check / settings write / build-family process, a 20 ms UI dispatcher heartbeat that records maximum observed delay for M6, and startup marks (process start → logging → Velopack → settings → window shown → first snapshot) measured from one origin and logged once each at `INF`. Heartbeat sampling is diagnostic evidence, not proof of every individual operation's blocking time. The budgets live in `PerfBudgets`. |
 | `Services/ProcessRunner.cs` | The v0.3.0 process boundary behind `IProcessRunner`: UTF-8, line-buffered events while the child runs, environment injection, timeout, cancel with tree kill, and `NotFound`/`TimedOut`/`Canceled`/`Failed` as outcomes instead of exceptions. `GitRunner` keeps its own behaviour. |
 | `Services/BuildService.cs` / `BuildCommandBuilder.cs` / `BuildProfileResolver.cs` | Build / run / publish / test as typed sessions: argument lists only, one build at a time process-wide (the rest queue), exe resolution with a `dotnet run` fallback, publish path from the output line, platform only where it applies. Profiles default to Debug/x64 and persist per project. |
 | `Services/ActivityCenter.cs` / `BuildHistory.cs` / `BuildLogWriter.cs` | The queue and the record: `Operation` rows for every build-family run, a ring of 200 stored entries (`build-history.json`, schema 1, atomic, corrupt file backed up), and the complete on-disk log (the console is the bounded window). |
@@ -168,7 +181,11 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 | `Scripts/smoke-ui.ps1` | Visits all 8 destinations through UI Automation in a throw-away `DEVDESK_DATA_DIR`; asserts one catalog scan and no ERR/FTL lines. |
 | `Scripts/verify-shell.ps1` | Proves placement restore, last-route restore, minimum size, remembered navigation and the real update answer against the exe. |
 | `Scripts/capture-page.ps1` | Screenshots one destination for review/evidence. |
-| `Scripts/ci.ps1` | **The CI gate locally** — Release build + full test suite at `-p:Platform=x64`, TRX into `artifacts\`. Same two commands as `ci.yml`. |
+| `Scripts/ci.ps1` | **The CI gate locally** — restore once, build the test project/app reference once, then test without rebuilding at `-p:Platform=x64`; TRX into `artifacts\`. Matches `ci.yml`. |
+| `Scripts/ui-tests.ps1` / `DevDesk.UiTests/` | Opt-in FlaUI UIA3 smoke test; requires an interactive Windows desktop and stays outside required CI. |
+| `Scripts/benchmark-v07.ps1` / `DevDesk.Tests/V07ScaleBenchmarkTests.cs` | Opt-in v0.7 cache, first-card, search, and synthetic 8/50-repository performance checks; M4 currently fails and is a release blocker. |
+| `Services/ProjectRootWatcher.cs` / `ProjectOrganizationStore.cs` | Debounced filesystem invalidation and separately persisted pins, tags and recent-open metadata. |
+| `Services/WorkspaceTargetDiscovery.cs` | Bounded local solution/project discovery for the selected checkout. |
 | `.github/workflows/ci.yml` | Push/PR gate on `main`: build Release, test, artefacts on failure. **Required check name: `Build & test`.** |
 | `.github/workflows/release.yml` | Tag (`v*`) / manual dispatch only; `verify` job runs the gate first, then `build-and-release.ps1`; refuses to republish an existing version. |
 | `docs/DEVDESK-ROADMAP.md` | The map: versions, findings, decisions, service boundaries. |

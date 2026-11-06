@@ -1007,6 +1007,24 @@ mistakes (mapping tests + preview shows the exact tag), release notes quality
 > **Theme:** works for a folder of 50 repos, not just the ecosystem. **Size:** M ·
 > **Risk:** Medium · **Channel:** beta · **Depends on:** 0.1 (catalog), 0.5 (cache pattern)
 
+> **Delivery status:** implementation in progress; not release-ready. See
+> `docs/versions/V0.7.0.md` for current evidence and explicit gaps. Latest
+> retained-build desktop run: cached snapshot at 221 ms, first card layout ready
+> at 690 ms, UI Automation observed the cached card at 875 ms (M1 misses <700
+> ms), and the native window became visible at 550 ms (M2 misses <400 ms).
+> Working set was 253 MiB (M5 passes). The UIA heartbeat recorded 477 ms during
+> a mixed startup/scan/navigation journey (M6 misses <50 ms; attribution still
+> needs isolation). M4 measured 1,855.7 ms at default parallelism four when the
+> installed Git executable was first on PATH; the host's bundled Git produced
+> substantially slower runs, so the benchmark remains environment-dependent.
+> The cached snapshot mark measures data readiness, not M1. Checkout-targeted
+> refresh is implemented; installed-path validation and manual accessibility
+> review remain open. Existing performance targets and acceptance criteria
+> remain unchanged.
+> Checkout-targeted refresh is implemented; installed-path validation and
+> manual accessibility review remain open. Existing performance targets and
+> acceptance criteria remain unchanged.
+
 **Why.** The scanner is the core skill of the product; today it is tuned to one
 small folder (F6/F7). A 1.0 dashboard that stutters on a real `C:\Code` is not a
 product.
