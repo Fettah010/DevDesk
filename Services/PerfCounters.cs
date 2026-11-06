@@ -189,6 +189,10 @@ public sealed class PerfCounters
             {
                 // Won the CAS: record which UI-thread operation was active.
                 MaxUiDispatchDelayDuring = _uiOperations.Count > 0 ? _uiOperations.Peek() : null;
+                LoggingService.Log.Warning(
+                    "Startup: UI dispatch delay {Delay} ms during {Operation}",
+                    (long)delay.TotalMilliseconds,
+                    MaxUiDispatchDelayDuring ?? "<idle>");
                 return;
             }
 
