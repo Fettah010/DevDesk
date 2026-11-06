@@ -20,10 +20,14 @@ public static class AppServices
     private static BuildService? _builds;
     private static ITemplateService? _templates;
     private static GitHubService? _github;
+    private static ProjectOrganizationStore? _organization;
+    private static ProjectRootWatcher? _rootWatcher;
 
-    public static ProjectCatalog Catalog => _catalog ??= new ProjectCatalog();
+    public static ProjectCatalog Catalog => _catalog ??= CreateCatalog();
 
     public static SettingsService Settings => _settings ??= SettingsService.Current;
+
+    public static ProjectOrganizationStore Organization => _organization ??= CreateOrganizationStore();
 
     public static UpdateService Updates => UpdateService.Current;
 
@@ -54,9 +58,19 @@ public static class AppServices
             _settings = settings;
         }
 
-        _catalog = catalog ?? _catalog ?? new ProjectCatalog();
+        _catalog = catalog ?? _catalog ?? CreateCatalog();
+        if (_catalog.Snapshot.Freshness == CatalogFreshness.Cached)
+        {
+            StartupTimeline.Current.Mark(StartupTimeline.FirstSnapshot);
+        }
+        StartupTimeline.Current.Mark(StartupTimeline.ServicesCatalogReady);
+
         _templates = new TemplateService(_catalog);
         _github = null;
+        _rootWatcher?.Dispose();
+        _rootWatcher = new ProjectRootWatcher(_catalog);
+        _rootWatcher.Reconfigure(Settings.Settings.Roots);
+        StartupTimeline.Current.Mark(StartupTimeline.RootWatcherReady);
 
         // The settings file decides which release channel the updater follows
         // (D5: beta before 1.0). The setter refuses values outside the
@@ -67,6 +81,8 @@ public static class AppServices
         {
             LoggingService.Log.Warning("Settings: {Warning}", Settings.LastLoad.Warning);
         }
+
+        StartupTimeline.Current.Mark(StartupTimeline.ServicesReady);
     }
 
     private static GitHubService CreateGitHubService()
@@ -77,5 +93,25 @@ public static class AppServices
             new GitHubApiClient(),
             new GitHubCredentialStore(dataDirectory),
             new GitHubCacheStore(Path.Combine(dataDirectory, "github-cache.json")));
+    }
+
+    private static ProjectOrganizationStore CreateOrganizationStore()
+    {
+        var dataDirectory = Path.GetDirectoryName(Settings.SettingsPath)
+            ?? SettingsService.ResolveDataDirectory();
+        return new ProjectOrganizationStore(dataDirectory);
+    }
+
+    public static void ReconfigureRootWatcher() =>
+        _rootWatcher?.Reconfigure(Settings.Settings.Roots);
+
+    private static ProjectCatalog CreateCatalog()
+    {
+        var dataDirectory = Path.GetDirectoryName(Settings.SettingsPath)
+            ?? SettingsService.ResolveDataDirectory();
+        return new ProjectCatalog(
+            new ScanEngine(rootsProvider: () => Settings.Settings.Roots),
+            cache: new ScanCacheStore(new JsonStore(Path.Combine(dataDirectory, "scan-cache.json"))),
+            cacheRoots: Settings.Settings.Roots);
     }
 }

@@ -22,10 +22,10 @@ public enum PerfOutcome
 /// </summary>
 public static class PerfBudgets
 {
-    /// <summary>M2 — cached first paint, measured to the window being shown.</summary>
+    /// <summary>M2 — cached window appearance, validated by desktop UI automation.</summary>
     public static TimeSpan StartupToWindow { get; } = TimeSpan.FromMilliseconds(400);
 
-    /// <summary>M1 — warm start to interactive cards, measured to the first snapshot.</summary>
+    /// <summary>M1 — warm start until the first project card has a realized layout container.</summary>
     public static TimeSpan StartupTotal { get; } = TimeSpan.FromMilliseconds(700);
 
     /// <summary>M3 — a full scan of the eight real repositories in the ecosystem.</summary>
@@ -36,6 +36,9 @@ public static class PerfBudgets
 
     /// <summary>M5 — memory with a hundred repositories loaded.</summary>
     public const long WorkingSetBytes = 300L * 1024 * 1024;
+
+    /// <summary>M6 — observed UI dispatcher delay beyond the heartbeat cadence.</summary>
+    public static TimeSpan UiDispatchDelay { get; } = TimeSpan.FromMilliseconds(50);
 }
 
 /// <summary>
@@ -75,6 +78,7 @@ public sealed class PerfCounters
     private long _lastUpdateCheckMs = NotMeasured;
     private long _lastSettingsWriteMs = NotMeasured;
     private long _lastBuildMs = NotMeasured;
+    private long _maxUiDispatchDelayTicks;
 
     /// <summary>Scans started, including the ones that failed or were cancelled.</summary>
     public long Scans => Interlocked.Read(ref _scans);
@@ -108,6 +112,16 @@ public sealed class PerfCounters
 
     /// <summary>The last finished build-family process, or null when none has run.</summary>
     public TimeSpan? LastBuild => ToDuration(Interlocked.Read(ref _lastBuildMs));
+
+    /// <summary>Largest observed UI dispatcher delay, or null until sampled.</summary>
+    public TimeSpan? MaxUiDispatchDelay
+    {
+        get
+        {
+            var value = Interlocked.Read(ref _maxUiDispatchDelayTicks);
+            return value == 0 ? null : TimeSpan.FromTicks(value);
+        }
+    }
 
     /// <summary>Resident memory of this process (M5's 300 MB is the 100-repo target).</summary>
     public long WorkingSetBytes => Environment.WorkingSet;
@@ -150,6 +164,23 @@ public sealed class PerfCounters
 
     /// <summary>Counts a failure that has no duration of its own.</summary>
     public void RecordFailure() => Interlocked.Increment(ref _failures);
+
+    /// <summary>Retains the maximum delay observed by the UI dispatcher heartbeat.</summary>
+    public void RecordUiDispatchDelay(TimeSpan delay)
+    {
+        var ticks = Math.Max(0, delay.Ticks);
+        var current = Interlocked.Read(ref _maxUiDispatchDelayTicks);
+        while (ticks > current)
+        {
+            var observed = Interlocked.CompareExchange(ref _maxUiDispatchDelayTicks, ticks, current);
+            if (observed == current)
+            {
+                return;
+            }
+
+            current = observed;
+        }
+    }
 
     /// <summary>
     /// Records one build-family process. A cancelled build is counted but not

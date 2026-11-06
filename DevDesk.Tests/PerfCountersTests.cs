@@ -28,7 +28,7 @@ public class PerfCountersTests
         clock.Advance(TimeSpan.FromMilliseconds(120));
         timeline.Mark(StartupTimeline.LoggingReady);
         clock.Advance(TimeSpan.FromMilliseconds(260));
-        timeline.Mark(StartupTimeline.WindowShown);
+        timeline.Mark(StartupTimeline.WindowActivated);
 
         var marks = timeline.Marks;
 
@@ -48,10 +48,9 @@ public class PerfCountersTests
         Assert.Equal(TimeSpan.FromMilliseconds(120), timeline.Elapsed(StartupTimeline.LoggingReady));
         Assert.Null(timeline.Elapsed(StartupTimeline.FirstSnapshot));
 
-        // A repeated mark keeps the first number: "window shown" means the first
-        // time it was shown, not the last time somebody navigated.
+        // A repeated mark keeps the first number, not the last re-navigation.
         clock.Advance(TimeSpan.FromSeconds(5));
-        Assert.Equal(TimeSpan.FromMilliseconds(380), timeline.Mark(StartupTimeline.WindowShown));
+        Assert.Equal(TimeSpan.FromMilliseconds(380), timeline.Mark(StartupTimeline.WindowActivated));
         Assert.Equal(3, timeline.Marks.Count);
     }
 
@@ -103,6 +102,29 @@ public class PerfCountersTests
     }
 
     [Fact]
+    public void UiThreadHeartbeat_RecordsDelayBeyondItsExpectedCadence()
+    {
+        var clock = new ManualTimeProvider();
+        var counters = new PerfCounters();
+        var heartbeat = new UiThreadHeartbeat(counters, clock);
+
+        heartbeat.Sample();
+        Assert.Null(counters.MaxUiDispatchDelay);
+
+        clock.Advance(UiThreadHeartbeat.Interval);
+        heartbeat.Sample();
+        Assert.Null(counters.MaxUiDispatchDelay);
+
+        clock.Advance(TimeSpan.FromMilliseconds(85));
+        heartbeat.Sample();
+        Assert.Equal(TimeSpan.FromMilliseconds(65), counters.MaxUiDispatchDelay);
+
+        clock.Advance(TimeSpan.FromMilliseconds(25));
+        heartbeat.Sample();
+        Assert.Equal(TimeSpan.FromMilliseconds(65), counters.MaxUiDispatchDelay);
+    }
+
+    [Fact]
     public void PerfCounters_FormatsDurations()
     {
         Assert.Equal("—", PerfCounters.FormatDuration(null));
@@ -124,9 +146,11 @@ public class PerfCountersTests
 
         timeline.Mark(StartupTimeline.ProcessStart);
         clock.Advance(TimeSpan.FromMilliseconds(250));
-        timeline.Mark(StartupTimeline.WindowShown);
+        timeline.Mark(StartupTimeline.WindowActivated);
         clock.Advance(TimeSpan.FromMilliseconds(150));
         timeline.Mark(StartupTimeline.FirstSnapshot);
+        clock.Advance(TimeSpan.FromMilliseconds(25));
+        timeline.Mark(StartupTimeline.FirstProjectCardsReady);
 
         var counters = new PerfCounters();
         counters.RecordScan(TimeSpan.FromMilliseconds(380), 8, PerfOutcome.Ok);
@@ -135,12 +159,16 @@ public class PerfCountersTests
 
         var viewModel = new DiagnosticsViewModel(new LogRingBufferSink(), counters, timeline);
 
-        var windowShown = Row(viewModel, "Startup · window shown");
-        Assert.Equal("250 ms", windowShown.ValueText);
-        Assert.Equal("budget 400 ms · M2", windowShown.BudgetText);
-        Assert.Equal(PerfTone.Within, windowShown.Tone);
+        var windowActivated = Row(viewModel, "Startup · window activated");
+        Assert.Equal("250 ms", windowActivated.ValueText);
+        Assert.Contains("desktop UI automation", windowActivated.BudgetText, StringComparison.Ordinal);
+        Assert.Equal(PerfTone.Muted, windowActivated.Tone);
 
         Assert.Equal("400 ms", Row(viewModel, "Startup · first snapshot").ValueText);
+        var cardsReady = Row(viewModel, "Startup · project cards ready");
+        Assert.Equal("425 ms", cardsReady.ValueText);
+        Assert.Equal("budget 700 ms · M1", cardsReady.BudgetText);
+        Assert.Equal(PerfTone.Within, cardsReady.Tone);
 
         var scan = Row(viewModel, "Last scan");
         Assert.Equal("380 ms · 8 repos", scan.ValueText);
@@ -151,6 +179,7 @@ public class PerfCountersTests
         Assert.Equal(PerfTone.Muted, updateCheck.Tone); // no local budget to compare against
 
         Assert.Equal("4 ms", Row(viewModel, "Last settings write").ValueText);
+        Assert.Equal("—", Row(viewModel, "Max UI dispatch delay").ValueText);
 
         var memory = Row(viewModel, "Working set");
         Assert.NotEqual("—", memory.ValueText);
@@ -164,12 +193,16 @@ public class PerfCountersTests
 
         // Over budget is a colour, not a failure: the scan still counted as one.
         counters.RecordScan(TimeSpan.FromSeconds(2), 8, PerfOutcome.Ok);
+        counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(65));
         viewModel.Load();
 
         var slow = Row(viewModel, "Last scan");
         Assert.Equal("2.00 s · 8 repos", slow.ValueText);
         Assert.Equal(PerfTone.Over, slow.Tone);
         Assert.Contains("scans 2", viewModel.PerformanceCountersText, StringComparison.Ordinal);
+        var uiDelay = Row(viewModel, "Max UI dispatch delay");
+        Assert.Equal("65 ms", uiDelay.ValueText);
+        Assert.Equal(PerfTone.Over, uiDelay.Tone);
     }
 
     [Fact]
@@ -180,7 +213,7 @@ public class PerfCountersTests
 
         timeline.Mark(StartupTimeline.ProcessStart);
         clock.Advance(TimeSpan.FromMilliseconds(300));
-        timeline.Mark(StartupTimeline.WindowShown);
+        timeline.Mark(StartupTimeline.WindowActivated);
 
         // A launch that restores Diagnostics (or any page that asks for no cards)
         // never scans, so there is no "warm start to interactive cards" to report.
@@ -193,7 +226,8 @@ public class PerfCountersTests
         var snapshot = Row(viewModel, "Startup · first snapshot");
         Assert.Equal("—", snapshot.ValueText);
         Assert.Equal(PerfTone.Muted, snapshot.Tone);
-        Assert.Equal("300 ms", Row(viewModel, "Startup · window shown").ValueText);
+        Assert.Equal("300 ms", Row(viewModel, "Startup · window activated").ValueText);
+        Assert.Equal("—", Row(viewModel, "Startup · project cards ready").ValueText);
         Assert.Equal("—", Row(viewModel, "Last scan").ValueText);
         Assert.Contains("scans 0", viewModel.PerformanceCountersText, StringComparison.Ordinal);
     }

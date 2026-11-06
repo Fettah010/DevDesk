@@ -5,7 +5,12 @@ namespace DevDesk.Models;
 /// walk has not finished discovering candidates: the UI must treat 0 as
 /// "indeterminate" rather than "nothing to do".
 /// </summary>
-public readonly record struct ScanProgress(int Completed, int Total, string CurrentName)
+public readonly record struct ScanProgress(
+    int Completed,
+    int Total,
+    string CurrentName,
+    string RootPath = "",
+    ProjectModel? Project = null)
 {
     public bool IsIndeterminate => Total <= 0;
 }

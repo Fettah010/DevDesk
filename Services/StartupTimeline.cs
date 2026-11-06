@@ -14,8 +14,8 @@ public sealed record StartupMark(string Name, TimeSpan Elapsed);
 /// Main, long before <see cref="LoggingService.Initialize"/> — so they are
 /// buffered and flushed in order once the logger is ready
 /// (<see cref="AttachToLog"/>). A name is recorded once: a second mark with the
-/// same name (a re-navigation, a refresh) is ignored, so "window shown" really
-/// means the first time it was shown.
+/// same name (a re-navigation, a refresh) is ignored, so one startup stage keeps
+/// the timestamp of its first occurrence.
 /// </para>
 /// <para>
 /// The clock is a <see cref="TimeProvider"/> and the origin is its timestamp at
@@ -36,8 +36,19 @@ public sealed class StartupTimeline
     public const string SettingsLoaded = "settings loaded";
     public const string LoggingReady = "logging ready";
     public const string VelopackDone = "velopack done";
-    public const string WindowShown = "window shown";
+    public const string WindowActivated = "window activated";
     public const string FirstSnapshot = "first snapshot";
+    public const string WindowXamlReady = "window xaml ready";
+    public const string WindowDisplaysReady = "window displays ready";
+    public const string WindowBoundsReady = "window bounds ready";
+    public const string WindowPlacementReady = "window placement ready";
+    public const string WindowThemeReady = "window theme ready";
+    public const string WindowRouteReady = "window route ready";
+    public const string WindowSetupReady = "window setup ready";
+    public const string FirstProjectCardsReady = "first project cards ready";
+    public const string ServicesCatalogReady = "services catalog ready";
+    public const string RootWatcherReady = "root watcher ready";
+    public const string ServicesReady = "services ready";
 
     public static StartupTimeline Current { get; } = new();
 

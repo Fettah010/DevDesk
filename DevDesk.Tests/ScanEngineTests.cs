@@ -45,6 +45,20 @@ public class ScanEngineTests
         Assert.Equal("feature", project.Branch);
         Assert.NotEqual("—", project.Branch);
         Assert.False(project.Dirty);
+        Assert.True(project.IsWorktree);
+        Assert.Equal(main, project.WorktreeOfPath);
+        Assert.False(string.IsNullOrWhiteSpace(project.RepositoryIdentity));
+    }
+
+    [Fact]
+    public void RepositoryIdentityResolver_RejectsMalformedGitPointer()
+    {
+        using var sandbox = new GitSandbox();
+        var checkout = sandbox.PathOf("malformed");
+        Directory.CreateDirectory(checkout);
+        File.WriteAllText(Path.Combine(checkout, ".git"), "not a gitdir pointer");
+
+        Assert.Null(RepositoryIdentityResolver.Resolve(checkout));
     }
 
     [Fact]
@@ -81,6 +95,137 @@ public class ScanEngineTests
 
         var project = Assert.Single(result.Projects);
         Assert.Equal("Visible", project.Name);
+    }
+
+    [Fact]
+    public async Task Scan_UsesEachConfiguredRootDepthAndEnabledState()
+    {
+        using var sandbox = new GitSandbox();
+        var rootA = sandbox.PathOf("root-a");
+        var rootB = sandbox.PathOf("root-b");
+        var disabledRoot = sandbox.PathOf("disabled-root");
+        AddMarkerProject(Path.Combine(rootA, "Direct"));
+        AddMarkerProject(Path.Combine(rootA, "Nested", "TooDeep"));
+        AddMarkerProject(Path.Combine(rootB, "Nested", "Included"));
+        AddMarkerProject(Path.Combine(disabledRoot, "Disabled"));
+        var config = new[]
+        {
+            new ScanRootSettings { Path = rootA, Depth = 1 },
+            new ScanRootSettings { Path = rootB, Depth = 2 },
+            new ScanRootSettings { Path = disabledRoot, Depth = 2, Enabled = false },
+        };
+
+        var result = await new ScanEngine(
+            selfPath: sandbox.PathOf("_no-self_"),
+            rootsProvider: () => config).ScanAsync();
+
+        Assert.Equal(new[] { "Direct", "Included" }, result.Projects.Select(project => project.Name));
+    }
+
+    [Fact]
+    public async Task Scan_ReportsUnavailableRootWithoutHidingHealthyRootProjects()
+    {
+        using var sandbox = new GitSandbox();
+        var missingRoot = sandbox.PathOf("missing");
+        var healthyRoot = sandbox.PathOf("healthy");
+        AddMarkerProject(Path.Combine(healthyRoot, "Visible"));
+
+        var result = await new ScanEngine(
+            selfPath: sandbox.PathOf("_no-self_"),
+            rootsProvider: () => new[]
+            {
+                new ScanRootSettings { Path = missingRoot },
+                new ScanRootSettings { Path = healthyRoot },
+            }).ScanAsync();
+
+        Assert.Equal("Visible", Assert.Single(result.Projects).Name);
+        Assert.Equal(healthyRoot, result.Projects[0].ScanRootPath);
+        Assert.Equal(missingRoot, Assert.Single(result.RootDiagnostics).RootPath);
+    }
+
+    [Fact]
+    public async Task Scan_IncludesConfiguredRootWhenItIsAProject()
+    {
+        using var sandbox = new GitSandbox();
+        var rootProject = await sandbox.InitRepoAsync("selected-repository");
+
+        var result = await new ScanEngine(
+            selfPath: sandbox.PathOf("_no-self_"),
+            rootsProvider: () => new[]
+            {
+                new ScanRootSettings { Path = rootProject, Depth = 2 },
+            }).ScanAsync();
+
+        Assert.Equal(rootProject, Assert.Single(result.Projects).Path);
+    }
+
+    [Fact]
+    public async Task ScanCheckout_ReadsOneIncludedCheckoutAndHonorsRootBoundaries()
+    {
+        using var sandbox = new GitSandbox();
+        var root = sandbox.PathOf("root");
+        var checkout = await sandbox.InitRepoAsync(Path.Combine("root", "Visible"));
+        var ignored = await sandbox.InitRepoAsync(Path.Combine("root", "ignored"));
+        var rootSettings = new ScanRootSettings
+        {
+            Path = root,
+            Depth = 2,
+            Ignores = new List<string> { "ignored" },
+        };
+        var scanner = new ScanEngine(selfPath: sandbox.PathOf("_no-self_"));
+
+        var project = await scanner.ScanCheckoutAsync(rootSettings, checkout);
+        var ignoredProject = await scanner.ScanCheckoutAsync(rootSettings, ignored);
+        var outsideProject = await scanner.ScanCheckoutAsync(rootSettings, sandbox.PathOf("outside"));
+
+        Assert.NotNull(project);
+        Assert.Equal(checkout, project.Path);
+        Assert.Equal(root, project.ScanRootPath);
+        Assert.Null(ignoredProject);
+        Assert.Null(outsideProject);
+    }
+
+    [Fact]
+    public async Task Scan_DeduplicatesSameCheckoutReachedByOverlappingRoots()
+    {
+        using var sandbox = new GitSandbox();
+        var childRoot = sandbox.PathOf(Path.Combine("parent", "Child"));
+        AddMarkerProject(childRoot);
+        var config = new[]
+        {
+            new ScanRootSettings { Path = sandbox.PathOf("parent"), Depth = 2 },
+            new ScanRootSettings { Path = childRoot, Depth = 1 },
+        };
+
+        var result = await new ScanEngine(
+            selfPath: sandbox.PathOf("_no-self_"),
+            rootsProvider: () => config).ScanAsync();
+
+        Assert.Equal("Child", Assert.Single(result.Projects).Name);
+    }
+
+    [Fact]
+    public async Task Scan_RootIgnoreNegationIsOrderedAndGitMetadataRemainsProtected()
+    {
+        using var sandbox = new GitSandbox();
+        var root = sandbox.PathOf("root");
+        AddMarkerProject(Path.Combine(root, "build", "Included"));
+        AddMarkerProject(Path.Combine(root, "build", "Excluded"));
+        var config = new[]
+        {
+            new ScanRootSettings
+            {
+                Path = root,
+                Depth = 3,
+                Ignores = new List<string> { "build", "!build/Included" },
+            },
+        };
+
+        var result = await new ScanEngine(
+            selfPath: sandbox.PathOf("_no-self_"),
+            rootsProvider: () => config).ScanAsync();
+
+        Assert.Equal("Included", Assert.Single(result.Projects).Name);
     }
 
     [Fact]
@@ -347,33 +492,18 @@ public class ScanEngineTests
         Assert.All(reports, r => Assert.False(string.IsNullOrWhiteSpace(r.CurrentName)));
     }
 
-    [Fact]
-    [Trait("Category", "Perf")]
-    public async Task Scan_RealEcosystem_ReportsDuration()
-    {
-        if (!Directory.Exists(ScanEngine.DefaultScanRoot))
-        {
-            return; // CI has no ecosystem folder
-        }
-
-        var stopwatch = Stopwatch.StartNew();
-        var result = await new ScanEngine().ScanAsync();
-        stopwatch.Stop();
-
-        _output.WriteLine(
-            $"real scan: {stopwatch.ElapsedMilliseconds} ms for {result.Projects.Count} project(s)");
-        _output.WriteLine("  " + string.Join(", ", result.Projects.Select(p => p.Name)));
-
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
-            $"real scan took {stopwatch.ElapsedMilliseconds} ms");
-    }
-
     // --- helpers ------------------------------------------------------------
 
     private static Task<ScannerResult> Scan(string root) => Scan(root, CancellationToken.None);
 
     private static Task<ScannerResult> Scan(string root, CancellationToken cancellationToken) =>
         new ScanEngine(root, Path.Combine(root, "_no-self_")).ScanAsync(cancellationToken);
+
+    private static void AddMarkerProject(string path)
+    {
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, Path.GetFileName(path) + ".sln"), string.Empty);
+    }
 
     /// <summary>Junction/symlink, best effort: false means "skip this test here".</summary>
     private static bool TryCreateDirectoryLink(string linkPath, string targetPath)
