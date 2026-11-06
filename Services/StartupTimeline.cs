@@ -33,10 +33,13 @@ public sealed record StartupMark(string Name, TimeSpan Elapsed);
 public sealed class StartupTimeline
 {
     public const string ProcessStart = "process start";
+    public const string AppStarted = "app started";
+    public const string AppLaunched = "app launched";
     public const string SettingsLoaded = "settings loaded";
     public const string LoggingReady = "logging ready";
     public const string VelopackDone = "velopack done";
     public const string WindowActivated = "window activated";
+    public const string WindowHwndVisible = "window hwnd visible";
     public const string FirstSnapshot = "first snapshot";
     public const string WindowXamlReady = "window xaml ready";
     public const string WindowDisplaysReady = "window displays ready";

@@ -19,6 +19,10 @@ public partial class App : Application
 
     public App()
     {
+        // First stage mark of the App object itself, before any XAML exists, so
+        // the log shows the App-construction phase instead of jumping from the
+        // logging mark straight to the window marks.
+        StartupTimeline.Current.Mark(StartupTimeline.AppStarted);
         this.InitializeComponent();
 
         ServicesInitialization = InitializeServicesWhenReadyAsync();
@@ -35,6 +39,7 @@ public partial class App : Application
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        StartupTimeline.Current.Mark(StartupTimeline.AppLaunched);
         await SettingsInitialization;
         var savedWindow = SettingsService.Current.Settings.Window;
         var displayTask = Task.Run(() => MainWindow.CurrentDisplays(savedWindow));
@@ -44,6 +49,7 @@ public partial class App : Application
         m_window.Activate();
 
         StartupTimeline.Current.Mark(StartupTimeline.WindowActivated);
+        m_window.RecordNativeWindowVisibility();
         m_window.StartUiResponsivenessMonitoring();
 
         // A second launch is redirected to this instance by SingleInstance; its

@@ -15,7 +15,6 @@ namespace DevDesk.Pages;
 public sealed partial class DashboardPage : Page
 {
     private bool _catalogSubscribed;
-    private bool _layoutSubscribed;
     private CatalogSnapshot? _pendingCatalogSnapshot;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _catalogUpdateTimer;
 
@@ -46,12 +45,10 @@ public sealed partial class DashboardPage : Page
             _catalogSubscribed = true;
         }
 
+        // The dispatcher timer polls the grid directly (self-polling), so the
+        // readiness mark no longer depends on the LayoutUpdated event firing at a
+        // particular moment during layout.
         _catalogUpdateTimer.Start();
-        if (!_layoutSubscribed)
-        {
-            ProjectsGrid.LayoutUpdated += ProjectsGrid_LayoutUpdated;
-            _layoutSubscribed = true;
-        }
 
         MarkProjectCardsReady();
     }
@@ -64,12 +61,6 @@ public sealed partial class DashboardPage : Page
             AppServices.Catalog.Changed -= Catalog_Changed;
             AppServices.Organization.Changed -= Organization_Changed;
             _catalogSubscribed = false;
-        }
-
-        if (_layoutSubscribed)
-        {
-            ProjectsGrid.LayoutUpdated -= ProjectsGrid_LayoutUpdated;
-            _layoutSubscribed = false;
         }
     }
 
@@ -101,8 +92,6 @@ public sealed partial class DashboardPage : Page
             StartupTimeline.Current.Mark(StartupTimeline.FirstProjectCardsReady);
         }
     }
-
-    private void ProjectsGrid_LayoutUpdated(object? sender, object e) => MarkProjectCardsReady();
 
     private void Organization_Changed(object? sender, EventArgs e) =>
         DispatcherQueue.TryEnqueue(() => UpdateProjectQuery());

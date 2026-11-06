@@ -216,6 +216,29 @@ public sealed partial class MainWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(IntPtr monitor, ref NativeMonitorInfo info);
 
+    [DllImport("user32.dll", EntryPoint = "IsWindowVisible")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    /// <summary>
+    /// Records whether the native window handle behind this XAML window is visible
+    /// (M2): the WinUI activation mark is a framework-side fact and is not the same
+    /// measurement as the native visibility the gate asks for, so both are taken.
+    /// </summary>
+    internal void RecordNativeWindowVisibility()
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var visible = hwnd != IntPtr.Zero && IsWindowVisible(hwnd);
+        if (visible)
+        {
+            StartupTimeline.Current.Mark(StartupTimeline.WindowHwndVisible);
+        }
+        else
+        {
+            LoggingService.Log.Warning("Startup: native window handle {Hwnd} is not visible yet", hwnd);
+        }
+    }
+
     private void RestoreLastRoute()
     {
         var route = Routes.Normalize(SettingsService.Current.Settings.LastRoute);
