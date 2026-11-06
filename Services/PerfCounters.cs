@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 
@@ -80,6 +81,10 @@ public sealed class PerfCounters
     private long _lastBuildMs = NotMeasured;
     private long _maxUiDispatchDelayTicks;
 
+    /// <summary>Named UI-thread operations currently on the dispatcher call stack.</summary>
+    /// <remarks>Only the UI thread pushes/pops this, so no lock is needed.</remarks>
+    private readonly Stack<string> _uiOperations = new();
+
     /// <summary>Scans started, including the ones that failed or were cancelled.</summary>
     public long Scans => Interlocked.Read(ref _scans);
 
@@ -122,6 +127,13 @@ public sealed class PerfCounters
             return value == 0 ? null : TimeSpan.FromTicks(value);
         }
     }
+
+    /// <summary>
+    /// Name of the UI-thread operation that was active when <see cref="MaxUiDispatchDelay"/>
+    /// was observed, or null when no operation was on the stack. Helps attribute
+    /// M6 violations to a specific page or service instead of an anonymous tick.
+    /// </summary>
+    public string? MaxUiDispatchDelayDuring { get; private set; }
 
     /// <summary>Resident memory of this process (M5's 300 MB is the 100-repo target).</summary>
     public long WorkingSetBytes => Environment.WorkingSet;
@@ -175,10 +187,48 @@ public sealed class PerfCounters
             var observed = Interlocked.CompareExchange(ref _maxUiDispatchDelayTicks, ticks, current);
             if (observed == current)
             {
+                // Won the CAS: record which UI-thread operation was active.
+                MaxUiDispatchDelayDuring = _uiOperations.Count > 0 ? _uiOperations.Peek() : null;
                 return;
             }
 
             current = observed;
+        }
+    }
+
+    /// <summary>
+    /// Begins a named UI-thread operation so that dispatcher delays sampled by
+    /// <see cref="UiThreadHeartbeat"/> can be attributed to a specific page or
+    /// service. Returns an <see cref="IDisposable"/>; dispose to end the operation.
+    /// </summary>
+    public IDisposable BeginUiOperation(string name)
+    {
+        _uiOperations.Push(name);
+        return new UiOperationDisposable(this);
+    }
+
+    private void EndUiOperation()
+    {
+        if (_uiOperations.Count > 0)
+        {
+            _uiOperations.Pop();
+        }
+    }
+
+    private sealed class UiOperationDisposable : IDisposable
+    {
+        private readonly PerfCounters _counters;
+        private bool _disposed;
+
+        public UiOperationDisposable(PerfCounters counters) => _counters = counters;
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                _counters.EndUiOperation();
+            }
         }
     }
 

@@ -239,6 +239,60 @@ public class PerfCountersTests
         return row!;
     }
 
+    [Fact]
+    public void PerfCounters_BeginUiOperation_RecordsActiveOperationDuringDelay()
+    {
+        var counters = new PerfCounters();
+
+        using (counters.BeginUiOperation("dashboard catalog update"))
+        {
+            counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(65));
+        }
+
+        Assert.Equal(TimeSpan.FromMilliseconds(65), counters.MaxUiDispatchDelay);
+        Assert.Equal("dashboard catalog update", counters.MaxUiDispatchDelayDuring);
+    }
+
+    [Fact]
+    public void PerfCounters_BeginUiOperation_NestedReportsInnermost()
+    {
+        var counters = new PerfCounters();
+
+        using (counters.BeginUiOperation("outer"))
+        using (counters.BeginUiOperation("inner"))
+        {
+            counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(120));
+        }
+
+        Assert.Equal("inner", counters.MaxUiDispatchDelayDuring);
+    }
+
+    [Fact]
+    public void PerfCounters_BeginUiOperation_NoOperationActiveReportsNull()
+    {
+        var counters = new PerfCounters();
+        counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(10));
+
+        Assert.Equal(TimeSpan.FromMilliseconds(10), counters.MaxUiDispatchDelay);
+        Assert.Null(counters.MaxUiDispatchDelayDuring);
+    }
+
+    [Fact]
+    public void PerfCounters_BeginUiOperation_PoppedAfterDispose()
+    {
+        var counters = new PerfCounters();
+
+        using (counters.BeginUiOperation("first"))
+        {
+            counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(5));
+        }
+
+        // Operation ended; subsequent delays report no active operation.
+        counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(50));
+        Assert.Null(counters.MaxUiDispatchDelayDuring);
+        Assert.Equal(TimeSpan.FromMilliseconds(50), counters.MaxUiDispatchDelay);
+    }
+
     /// <summary>A clock whose timestamp only moves when the test says so.</summary>
     private sealed class ManualTimeProvider : TimeProvider
     {

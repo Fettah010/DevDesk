@@ -77,19 +77,25 @@ public sealed partial class DashboardPage : Page
             return;
         }
 
-        ViewModel.ApplySnapshot(snapshot);
-        MarkProjectCardsReady();
+        using (PerfCounters.Current.BeginUiOperation("dashboard catalog update"))
+        {
+            ViewModel.ApplySnapshot(snapshot);
+            MarkProjectCardsReady();
+        }
     }
 
     private void MarkProjectCardsReady()
     {
-        if (ViewModel.Projects.Count > 0
-            && ProjectsGrid.Visibility == Visibility.Visible
-            && ProjectsGrid.ContainerFromIndex(0) is FrameworkElement card
-            && card.ActualWidth > 0
-            && card.ActualHeight > 0)
+        using (PerfCounters.Current.BeginUiOperation("dashboard card ready check"))
         {
-            StartupTimeline.Current.Mark(StartupTimeline.FirstProjectCardsReady);
+            if (ViewModel.Projects.Count > 0
+                && ProjectsGrid.Visibility == Visibility.Visible
+                && ProjectsGrid.ContainerFromIndex(0) is FrameworkElement card
+                && card.ActualWidth > 0
+                && card.ActualHeight > 0)
+            {
+                StartupTimeline.Current.Mark(StartupTimeline.FirstProjectCardsReady);
+            }
         }
     }
 

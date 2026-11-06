@@ -102,8 +102,13 @@ public sealed partial class MainWindow : Window
         _uiHeartbeatTimer.Start();
     }
 
-    private void UiHeartbeatTimer_Tick(DispatcherQueueTimer sender, object args) =>
-        _uiHeartbeat.Sample();
+    private void UiHeartbeatTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        using (PerfCounters.Current.BeginUiOperation("ui responsiveness heartbeat"))
+        {
+            _uiHeartbeat.Sample();
+        }
+    }
 
     private void ApplyMinimumSize()
     {

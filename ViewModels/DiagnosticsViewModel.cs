@@ -281,7 +281,10 @@ public sealed partial class DiagnosticsViewModel : ViewModelBase
                 "Max UI dispatch delay",
                 _counters.MaxUiDispatchDelay,
                 PerfBudgets.UiDispatchDelay,
-                "budget 50 ms · M6"),
+                "budget 50 ms · M6",
+                valueSuffix: _counters.MaxUiDispatchDelayDuring is { } during
+                    ? $"during {during}"
+                    : null),
             ByteRow(
                 "Working set",
                 _counters.WorkingSetBytes,
