@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -8,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Windows.Graphics;
+using DevDesk.Models;
 using DevDesk.Pages;
 using DevDesk.Services;
 using DevDesk.ViewModels;
@@ -16,13 +18,20 @@ namespace DevDesk;
 
 public sealed partial class MainWindow : Window
 {
+    private const uint MonitorDefaultToPrimary = 1;
     private readonly DispatcherQueueTimer _placementTimer;
     private readonly DispatcherQueueTimer _activityTimer;
+    private DispatcherQueueTimer? _uiHeartbeatTimer;
+    private readonly UiThreadHeartbeat _uiHeartbeat = new();
     private bool _placementRestored;
+    private bool _closed;
+    private bool _activitySubscribed;
+    private bool _routeRestoreQueued;
 
     public MainWindow()
     {
         this.InitializeComponent();
+        StartupTimeline.Current.Mark(StartupTimeline.WindowXamlReady);
         this.Title = "DevDesk";
         this.SystemBackdrop = new MicaBackdrop();
 
@@ -36,15 +45,13 @@ public sealed partial class MainWindow : Window
         this.AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
 
         ApplyMinimumSize();
-        RestorePlacement();
 
         // Register this window's content as the theme root so ThemeService can
         // flip light/dark from any page.
         if (this.Content is FrameworkElement root)
             ThemeService.Root = root;
         ThemeService.Apply(SettingsService.Current.Theme);
-
-        RestoreLastRoute();
+        StartupTimeline.Current.Mark(StartupTimeline.WindowThemeReady);
 
         // Geometry is saved on a short debounce: dragging a window raises dozens of
         // moves, and each save is an atomic file write.
@@ -62,11 +69,14 @@ public sealed partial class MainWindow : Window
         _activityTimer.Tick += (_, _) => UpdateRunningElapsed();
 
         AppServices.Activity.Changed += Activity_Changed;
+        _activitySubscribed = true;
         RefreshActivitySurfaces();
         UpdateTitleBarInset();
 
         AppWindow.Changed += AppWindow_Changed;
+        Activated += MainWindow_Activated;
         Closed += MainWindow_Closed;
+        StartupTimeline.Current.Mark(StartupTimeline.WindowSetupReady);
     }
 
     /// <summary>Brings this window forward; a second launch redirects here.</summary>
@@ -82,6 +92,19 @@ public sealed partial class MainWindow : Window
         LoggingService.Log.Information("Existing window brought to the foreground by a second launch");
     }
 
+    public void StartUiResponsivenessMonitoring()
+    {
+        _uiHeartbeatTimer ??= DispatcherQueue.CreateTimer();
+        _uiHeartbeatTimer.Interval = UiThreadHeartbeat.Interval;
+        _uiHeartbeatTimer.IsRepeating = true;
+        _uiHeartbeatTimer.Tick -= UiHeartbeatTimer_Tick;
+        _uiHeartbeatTimer.Tick += UiHeartbeatTimer_Tick;
+        _uiHeartbeatTimer.Start();
+    }
+
+    private void UiHeartbeatTimer_Tick(DispatcherQueueTimer sender, object args) =>
+        _uiHeartbeat.Sample();
+
     private void ApplyMinimumSize()
     {
         if (AppWindow.Presenter is not OverlappedPresenter presenter)
@@ -94,13 +117,20 @@ public sealed partial class MainWindow : Window
         presenter.PreferredMinimumHeight = WindowPlacement.MinimumHeight;
     }
 
-    private void RestorePlacement()
+    internal void RestorePlacement(IReadOnlyList<ScreenRect> displays)
     {
+        if (_closed)
+        {
+            return;
+        }
+
         var saved = SettingsService.Current.Settings.Window;
-        var placement = WindowPlacement.Restore(saved, CurrentDisplays());
+        StartupTimeline.Current.Mark(StartupTimeline.WindowDisplaysReady);
+        var placement = WindowPlacement.Restore(saved, displays);
         var bounds = placement.Bounds;
 
         AppWindow.MoveAndResize(new RectInt32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+        StartupTimeline.Current.Mark(StartupTimeline.WindowBoundsReady);
 
         if (placement.Maximized && AppWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -113,31 +143,44 @@ public sealed partial class MainWindow : Window
         LoggingService.Log.Debug(
             "Window placement restored to {Width}x{Height} at {X},{Y} (maximised {Maximized})",
             bounds.Width, bounds.Height, bounds.X, bounds.Y, placement.Maximized);
+        StartupTimeline.Current.Mark(StartupTimeline.WindowPlacementReady);
     }
 
     /// <summary>
     /// The current displays, primary first. An unreadable layout yields an empty
     /// list, which <see cref="WindowPlacement.Restore"/> treats as "no constraint".
     /// </summary>
-    private static IReadOnlyList<ScreenRect> CurrentDisplays()
+    internal static IReadOnlyList<ScreenRect> CurrentDisplays(WindowSettings saved)
     {
-        var displays = new List<ScreenRect>();
-
         try
         {
-            var primary = DisplayArea.Primary;
-            if (primary is not null)
+            var bounds = new NativeRect
             {
-                displays.Add(ToRect(primary.WorkArea));
+                Left = saved.X,
+                Top = saved.Y,
+                Right = saved.X + saved.Width,
+                Bottom = saved.Y + saved.Height,
+            };
+            var monitor = MonitorFromRect(ref bounds, MonitorDefaultToPrimary);
+            if (monitor == IntPtr.Zero)
+            {
+                return Array.Empty<ScreenRect>();
             }
 
-            foreach (var area in DisplayArea.FindAll())
+            var info = new NativeMonitorInfo
             {
-                var rect = ToRect(area.WorkArea);
-                if (!displays.Contains(rect))
+                Size = (uint)Marshal.SizeOf<NativeMonitorInfo>(),
+            };
+            if (GetMonitorInfo(monitor, ref info))
+            {
+                return new[]
                 {
-                    displays.Add(rect);
-                }
+                    new ScreenRect(
+                        info.Work.Left,
+                        info.Work.Top,
+                        info.Work.Right - info.Work.Left,
+                        info.Work.Bottom - info.Work.Top),
+                };
             }
         }
         catch (Exception ex)
@@ -145,16 +188,63 @@ public sealed partial class MainWindow : Window
             LoggingService.Log.Warning(ex, "Could not read the display layout");
         }
 
-        return displays;
+        return Array.Empty<ScreenRect>();
     }
 
-    private static ScreenRect ToRect(RectInt32 rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeMonitorInfo
+    {
+        public uint Size;
+        public NativeRect Monitor;
+        public NativeRect Work;
+        public uint Flags;
+    }
+
+    [DllImport("user32.dll", EntryPoint = "MonitorFromRect")]
+    private static extern IntPtr MonitorFromRect(ref NativeRect bounds, uint flags);
+
+    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref NativeMonitorInfo info);
 
     private void RestoreLastRoute()
     {
         var route = Routes.Normalize(SettingsService.Current.Settings.LastRoute);
         ContentFrame.Navigate(PageFor(route), null, new SuppressNavigationTransitionInfo());
         SelectNavigationItem(route);
+    }
+
+    private async void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
+    {
+        if (_routeRestoreQueued || args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            return;
+        }
+
+        _routeRestoreQueued = true;
+        await App.ServicesInitialization;
+        if (!DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_closed)
+                {
+                    return;
+                }
+
+                RestoreLastRoute();
+                StartupTimeline.Current.Mark(StartupTimeline.WindowRouteReady);
+            }))
+        {
+            LoggingService.Log.Warning("Could not queue initial route restoration");
+        }
     }
 
     private static Type PageFor(string tag) => tag switch
@@ -325,12 +415,21 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
-        AppServices.Activity.Changed -= Activity_Changed;
+        _closed = true;
+        if (_activitySubscribed)
+        {
+            AppServices.Activity.Changed -= Activity_Changed;
+        }
+
         _activityTimer.Stop();
+        _uiHeartbeatTimer?.Stop();
 
         // Flush the pending debounce: the last resize is often the one that counts.
         _placementTimer.Stop();
-        SavePlacement();
+        if (_placementRestored)
+        {
+            SavePlacement();
+        }
     }
 
     private void SavePlacement()

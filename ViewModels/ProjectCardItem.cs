@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using DevDesk.Models;
+using DevDesk.Services;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 
 namespace DevDesk.ViewModels;
 
@@ -17,15 +20,34 @@ namespace DevDesk.ViewModels;
 /// </summary>
 public sealed class ProjectCardItem
 {
-    public ProjectCardItem(ProjectModel model, BuildRecord? lastBuild)
+    public ProjectCardItem(ProjectModel model, BuildRecord? lastBuild, ProjectOrganizationEntry? organization = null)
     {
         Model = model ?? throw new ArgumentNullException(nameof(model));
         LastBuild = lastBuild;
+        Organization = organization;
     }
 
     public ProjectModel Model { get; }
 
     public BuildRecord? LastBuild { get; }
+
+    public ProjectOrganizationEntry? Organization { get; }
+
+    public bool HasTags => Organization?.Tags.Count > 0;
+
+    public string TagsText => Organization is { Tags.Count: > 0 } organization
+        ? string.Join(" · ", organization.Tags)
+        : string.Empty;
+
+    public string TagsAutomationName => $"Project tags: {TagsText}";
+
+    public SolidColorBrush TagsBrush => Organization?.TagColor switch
+    {
+        "Teal" => new SolidColorBrush(Color.FromArgb(255, 0, 112, 116)),
+        "Purple" => new SolidColorBrush(Color.FromArgb(255, 112, 65, 160)),
+        "Orange" => new SolidColorBrush(Color.FromArgb(255, 168, 82, 0)),
+        _ => new SolidColorBrush(Color.FromArgb(255, 45, 127, 249)),
+    };
 
     // The card reads these directly; the scan model stays the single owner of
     // them (no copy is stored, every getter forwards).
@@ -41,6 +63,12 @@ public sealed class ProjectCardItem
     public string VersionDisplay => Model.VersionDisplay;
 
     public bool IsWorkspace => Model.IsWorkspace;
+
+    public bool IsWorktree => Model.IsWorktree;
+
+    public bool DetailsPending => Model.DetailsPending;
+
+    public string? WorktreeOfPath => Model.WorktreeOfPath;
 
     public bool RemoteOk => Model.RemoteOk;
 

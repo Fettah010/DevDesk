@@ -32,6 +32,7 @@ public static class Program
         {
             // Logging first, so the Velopack hooks below have somewhere to write.
             LoggingService.Initialize();
+            App.BeginStartupPreparation();
 
             // Velopack requires this at the very beginning of Main: its hooks
             // (first run, restart after update) must run before any app code.

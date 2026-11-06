@@ -247,17 +247,18 @@ public sealed partial class DiagnosticsViewModel : ViewModelBase
         PerformanceRows = new List<PerfRow>
         {
             TimeRow(
-                "Startup · window shown",
-                _timeline.Elapsed(StartupTimeline.WindowShown),
-                PerfBudgets.StartupToWindow,
-                "budget 400 ms · M2"),
-            // Not Total: when the restored route never asks for cards (Diagnostics
-            // itself does not), there is no first snapshot, and printing the
-            // window-shown number under this label would be a measurement of the
-            // wrong thing. "—" is the honest answer until a scan lands.
+                "Startup · window activated",
+                _timeline.Elapsed(StartupTimeline.WindowActivated),
+                null,
+                "M2 appearance timing: desktop UI automation"),
             TimeRow(
                 "Startup · first snapshot",
                 _timeline.Elapsed(StartupTimeline.FirstSnapshot),
+                null,
+                "cache/catalog data ready; not a visual metric"),
+            TimeRow(
+                "Startup · project cards ready",
+                _timeline.Elapsed(StartupTimeline.FirstProjectCardsReady),
                 PerfBudgets.StartupTotal,
                 "budget 700 ms · M1"),
             TimeRow(
@@ -276,6 +277,11 @@ public sealed partial class DiagnosticsViewModel : ViewModelBase
                 _counters.LastSettingsWrite,
                 PerfBudgets.SettingsWrite,
                 "budget 20 ms · §6.3"),
+            TimeRow(
+                "Max UI dispatch delay",
+                _counters.MaxUiDispatchDelay,
+                PerfBudgets.UiDispatchDelay,
+                "budget 50 ms · M6"),
             ByteRow(
                 "Working set",
                 _counters.WorkingSetBytes,

@@ -14,9 +14,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>DevDesk</RootNamespace>
     <AssemblyName>DevDesk</AssemblyName>
-    <!-- DevDesk.Tests lives inside this folder (own project) and must NOT be
-         picked up by this project's default item globs. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);DevDesk.Tests\**</DefaultItemExcludes>
+    <!-- Test projects live inside this folder and must NOT be picked up by the
+         app project's default item globs. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);DevDesk.Tests\**;DevDesk.UiTests\**</DefaultItemExcludes>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <!-- The version quartet. All four move together via Scripts/bump-version.ps1;

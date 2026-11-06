@@ -60,6 +60,19 @@
                                         FontWeight="SemiBold"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                 </Border>
+                                <Border
+                                    Visibility="{x:Bind IsWorktree}"
+                                    CornerRadius="4"
+                                    Padding="5,1"
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    VerticalAlignment="Center">
+                                    <TextBlock
+                                        Text="Worktree"
+                                        FontSize="10"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        ToolTipService.ToolTip="{x:Bind WorktreeOfPath}"/>
+                                </Border>
                             </StackPanel>
                             <TextBlock
                                 Text="{x:Bind Path}"
@@ -67,6 +80,18 @@
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 TextTrimming="CharacterEllipsis"
                                 ToolTipService.ToolTip="{x:Bind Path}"/>
+                            <Border
+                                Visibility="{x:Bind HasTags}"
+                                CornerRadius="5"
+                                Padding="6,2"
+                                HorizontalAlignment="Left"
+                                Background="{x:Bind TagsBrush}"
+                                AutomationProperties.Name="{x:Bind TagsAutomationName}">
+                                <TextBlock
+                                    Text="{x:Bind TagsText}"
+                                    FontSize="10"
+                                    Foreground="White"/>
+                            </Border>
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -241,6 +266,12 @@
                             <TextBlock Text="Refresh"/>
                         </StackPanel>
                     </Button>
+                    <Button
+                        Content="Cancel scan"
+                        CornerRadius="8"
+                        Command="{x:Bind ViewModel.CancelScanCommand}"
+                        IsEnabled="{x:Bind ViewModel.IsScanning, Mode=OneWay}"
+                        AutomationProperties.Name="Cancel project scan"/>
                 </StackPanel>
             </Grid>
 
@@ -310,18 +341,39 @@
                     <TextBlock x:Name="ProjectsCountPillText" Text="{x:Bind ViewModel.ProjectsPillText, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </Border>
             </StackPanel>
-            <TextBlock
-                x:Name="ScanPathText"
-                Text="{x:Bind ViewModel.ScanPathText, Mode=OneWay}"
-                Style="{ThemeResource CaptionTextBlockStyle}"
-                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Bottom"/>
+            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                <TextBox
+                    x:Name="ProjectFilterBox"
+                    Width="240"
+                    PlaceholderText="Search name, path, branch or version"
+                    TextChanged="ProjectFilterBox_TextChanged"
+                    AutomationProperties.Name="Search projects"/>
+                <ComboBox
+                    x:Name="ProjectSortBox"
+                    Width="156"
+                    Header="Sort"
+                    SelectedIndex="0"
+                    SelectionChanged="ProjectSortBox_SelectionChanged">
+                    <ComboBoxItem Content="Name"/>
+                    <ComboBoxItem Content="Recent activity"/>
+                    <ComboBoxItem Content="Recently opened"/>
+                    <ComboBoxItem Content="Health"/>
+                    <ComboBoxItem Content="Version"/>
+                </ComboBox>
+                <TextBlock
+                    x:Name="ScanPathText"
+                    Text="{x:Bind ViewModel.ScanPathText, Mode=OneWay}"
+                    Style="{ThemeResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    VerticalAlignment="Bottom"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.ScanPathText}"/>
+            </StackPanel>
         </Grid>
 
         <GridView
             Grid.Row="3"
             x:Name="ProjectsGrid"
+            AutomationProperties.AutomationId="DashboardProjectsGrid"
             Visibility="{x:Bind ViewModel.ProjectsVisibility, Mode=OneWay}"
             ItemsSource="{x:Bind ViewModel.Projects, Mode=OneWay}"
             SelectionMode="None"
@@ -340,9 +392,9 @@
             VerticalAlignment="Top"
             Visibility="{x:Bind ViewModel.EmptyVisibility, Mode=OneWay}">
             <StackPanel Spacing="6">
-                <TextBlock Text="No projects yet" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                <TextBlock Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
                 <TextBlock
-                    Text="Put a repository (or a folder with a .sln/.csproj) inside the DevEcosystem folder and refresh."
+                    Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}"
                     Style="{ThemeResource CaptionTextBlockStyle}"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     TextWrapping="Wrap"/>

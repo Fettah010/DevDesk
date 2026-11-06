@@ -9,12 +9,19 @@ namespace DevDesk;
 
 public partial class App : Application
 {
+    private static readonly Task<SettingsService> SettingsInitialization =
+        Task.Run(() => SettingsService.Current);
+
+    internal static MainWindow? MainWindowInstance { get; private set; }
+    internal static Task ServicesInitialization { get; private set; } = Task.CompletedTask;
+
+    internal static void BeginStartupPreparation() => _ = SettingsInitialization;
+
     public App()
     {
         this.InitializeComponent();
 
-        // One service graph for the whole process, before any page exists.
-        AppServices.Initialize();
+        ServicesInitialization = InitializeServicesWhenReadyAsync();
 
         // XAML/UI-thread exceptions: log them, but keep default handling.
         // (Setting e.Handled = true would suppress the crash; a template should
@@ -26,14 +33,18 @@ public partial class App : Application
         };
     }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        await SettingsInitialization;
+        var savedWindow = SettingsService.Current.Settings.Window;
+        var displayTask = Task.Run(() => MainWindow.CurrentDisplays(savedWindow));
         m_window = new MainWindow();
+        m_window.RestorePlacement(await displayTask);
+        MainWindowInstance = m_window;
         m_window.Activate();
 
-        // M2 ("cached first paint") is measured to here, not to the constructor:
-        // a window that exists but is not on screen is not a start the user saw.
-        StartupTimeline.Current.Mark(StartupTimeline.WindowShown);
+        StartupTimeline.Current.Mark(StartupTimeline.WindowActivated);
+        m_window.StartUiResponsivenessMonitoring();
 
         // A second launch is redirected to this instance by SingleInstance; its
         // handler runs off the UI thread, so hop back before touching the window.
@@ -42,7 +53,19 @@ public partial class App : Application
 
         // Fire-and-forget: the update check runs off the UI thread after the
         // window is up, so startup is never blocked by the network.
-        _ = CheckForUpdatesAsync();
+        _ = CheckForUpdatesWhenReadyAsync();
+    }
+
+    private static async Task InitializeServicesWhenReadyAsync()
+    {
+        await SettingsInitialization.ConfigureAwait(false);
+        await Task.Run(() => AppServices.Initialize()).ConfigureAwait(false);
+    }
+
+    private async Task CheckForUpdatesWhenReadyAsync()
+    {
+        await ServicesInitialization.ConfigureAwait(false);
+        await CheckForUpdatesAsync().ConfigureAwait(false);
     }
 
     /// <summary>

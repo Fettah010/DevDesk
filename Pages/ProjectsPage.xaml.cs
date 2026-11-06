@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Collections.ObjectModel;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Threading;
 using Microsoft.UI.Xaml;
@@ -20,6 +20,7 @@ public sealed partial class ProjectsPage : Page
     private readonly GitService _git = new();
     private readonly BuildService _builds = AppServices.Builds;
     private CancellationTokenSource? _detailsCancellation;
+    private CancellationTokenSource? _targetCancellation;
     private CancellationTokenSource? _operationCancellation;
     private bool _operationRunning;
     private string? _conflictOperation;
@@ -35,10 +36,31 @@ public sealed partial class ProjectsPage : Page
     private string? _lastLogPath;
     private string? _outputPath;
     private string? _profileStatusText;
+    private IReadOnlyList<ProjectModel> _allProjects = Array.Empty<ProjectModel>();
+    private bool _hasRootDiagnostics;
+    private bool _initializingProjectList = true;
+    private bool _catalogSubscribed;
+    private CatalogSnapshot? _pendingCatalogSnapshot;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _catalogUpdateTimer;
 
     public ProjectsPage()
     {
         this.InitializeComponent();
+        _catalogUpdateTimer = DispatcherQueue.CreateTimer();
+        _catalogUpdateTimer.Interval = TimeSpan.FromMilliseconds(50);
+        _catalogUpdateTimer.IsRepeating = true;
+        _catalogUpdateTimer.Tick += CatalogUpdateTimer_Tick;
+        RefreshSavedViews();
+        HideArchivedCheckBox.IsChecked = AppServices.Organization.HideArchived;
+        _initializingProjectList = false;
+        var snapshot = AppServices.Catalog.Snapshot;
+        if (snapshot.Freshness == CatalogFreshness.Cached)
+        {
+            ApplyProjectList(snapshot);
+        }
+
+        Loaded += ProjectsPage_Loaded;
+        Unloaded += ProjectsPage_Unloaded;
         _ = LoadProjectsAsync();
     }
 
@@ -50,13 +72,225 @@ public sealed partial class ProjectsPage : Page
         try
         {
             var snapshot = await AppServices.Catalog.GetOrRefreshAsync();
-            ProjectsList.ItemsSource = snapshot.Projects;
-            if (ProjectsList.Items.Count > 0)
-                ProjectsList.SelectedIndex = 0;
+            ApplyProjectList(snapshot);
         }
         catch (Exception ex)
         {
             ShowError("Could not read the project list", ex.Message);
+        }
+    }
+
+    private void ProjectsPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (!_catalogSubscribed)
+        {
+            AppServices.Catalog.Changed += Catalog_Changed;
+            AppServices.Organization.Changed += Organization_Changed;
+            _catalogSubscribed = true;
+        }
+
+        _catalogUpdateTimer.Start();
+        if (WorkspaceTargetsToggle.IsChecked == true && Selected is { } project)
+        {
+            _ = LoadWorkspaceTargetsAsync(project);
+        }
+    }
+
+    private void ProjectsPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _catalogUpdateTimer.Stop();
+        _targetCancellation?.Cancel();
+        if (_catalogSubscribed)
+        {
+            AppServices.Catalog.Changed -= Catalog_Changed;
+            AppServices.Organization.Changed -= Organization_Changed;
+            _catalogSubscribed = false;
+        }
+    }
+
+    private void Catalog_Changed(object? sender, CatalogSnapshot snapshot) =>
+        Interlocked.Exchange(ref _pendingCatalogSnapshot, snapshot);
+
+    private void CatalogUpdateTimer_Tick(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args)
+    {
+        var snapshot = Interlocked.Exchange(ref _pendingCatalogSnapshot, null);
+        if (snapshot is not null && _catalogSubscribed)
+        {
+            ApplyProjectList(snapshot);
+        }
+    }
+
+    private void Organization_Changed(object? sender, EventArgs e) =>
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            RefreshSavedViews();
+            RefreshProjectProjection();
+        });
+
+    private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_initializingProjectList)
+        {
+            RefreshProjectProjection();
+        }
+    }
+
+    private void SortBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initializingProjectList)
+        {
+            RefreshProjectProjection();
+        }
+    }
+
+    private void ApplyProjectList(CatalogSnapshot snapshot)
+    {
+        _allProjects = snapshot.Projects;
+        _hasRootDiagnostics = snapshot.RootDiagnostics.Count > 0;
+        ProjectCatalogStateText.Text = snapshot.Freshness switch
+        {
+            CatalogFreshness.Cached => $"Cached local snapshot from {snapshot.CapturedAt:HH:mm:ss}; refreshing in the background.",
+            CatalogFreshness.Partial when AppServices.Catalog.IsRefreshing =>
+                $"Scan in progress; showing {_allProjects.Count} project(s) found so far.",
+            CatalogFreshness.Partial => snapshot.RootDiagnostics.Count == 0
+                ? "Scan is partial."
+                : $"Partial scan · {snapshot.RootDiagnostics.Count} warning(s): {Path.Combine(snapshot.RootDiagnostics[0].RootPath, snapshot.RootDiagnostics[0].Location)} — {snapshot.RootDiagnostics[0].Message}",
+            CatalogFreshness.Stale => $"Showing stale local data from {snapshot.CapturedAt:HH:mm:ss}; the latest refresh failed.",
+            _ => $"Local snapshot updated {snapshot.CapturedAt:HH:mm:ss}.",
+        };
+        RefreshProjectProjection();
+    }
+
+    private void RefreshProjectProjection()
+    {
+        var selectedPath = Selected?.Path;
+        var filtered = ProjectListQuery.Apply(
+            _allProjects,
+            FilterBox.Text,
+            SelectedSort,
+            AppServices.Organization.Snapshot,
+            SettingsService.Current.Settings.Roots,
+            AppServices.Organization.HideArchived);
+        ProjectsList.ItemsSource = filtered;
+
+        if (filtered.Count == 0)
+        {
+            DetailsPane.Visibility = Visibility.Collapsed;
+            ProjectNoMatchesText.Visibility = Visibility.Visible;
+            ProjectNoMatchesText.Text = _allProjects.Count == 0 && _hasRootDiagnostics
+                ? "No cards are available from the inaccessible roots. Check the scan status above."
+                : _allProjects.Count == 0
+                ? "No projects were found in the enabled scan roots."
+                : "No projects match this search.";
+            return;
+        }
+
+        ProjectNoMatchesText.Visibility = Visibility.Collapsed;
+        DetailsPane.Visibility = Visibility.Visible;
+        var selectedIndex = selectedPath is null
+            ? -1
+            : filtered.ToList().FindIndex(project =>
+                string.Equals(project.Path, selectedPath, StringComparison.OrdinalIgnoreCase));
+        ProjectsList.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    }
+
+    private ProjectSortOrder SelectedSort => SortBox.SelectedIndex switch
+    {
+        1 => ProjectSortOrder.Activity,
+        2 => ProjectSortOrder.RecentlyOpened,
+        3 => ProjectSortOrder.Health,
+        4 => ProjectSortOrder.Version,
+        _ => ProjectSortOrder.Name,
+    };
+
+    private void RefreshSavedViews(string? selectName = null)
+    {
+        var oldInitializing = _initializingProjectList;
+        _initializingProjectList = true;
+        var views = AppServices.Organization.SavedViews;
+        SavedViewsBox.ItemsSource = views;
+        SavedViewsBox.SelectedItem = views.FirstOrDefault(view =>
+            string.Equals(view.Name, selectName, StringComparison.OrdinalIgnoreCase));
+        _initializingProjectList = oldInitializing;
+    }
+
+    private void SavedViewsBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializingProjectList || SavedViewsBox.SelectedItem is not SavedProjectView view)
+        {
+            return;
+        }
+
+        _initializingProjectList = true;
+        FilterBox.Text = view.Query;
+        SortBox.SelectedIndex = view.SortOrder switch
+        {
+            ProjectSortOrder.Activity => 1,
+            ProjectSortOrder.RecentlyOpened => 2,
+            ProjectSortOrder.Health => 3,
+            ProjectSortOrder.Version => 4,
+            _ => 0,
+        };
+        _initializingProjectList = false;
+        RefreshProjectProjection();
+    }
+
+    private async void SaveProjectViewButton_Click(object sender, RoutedEventArgs e)
+    {
+        var nameBox = new TextBox
+        {
+            Header = "View name",
+            PlaceholderText = "For example: Needs attention",
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(nameBox, "Saved view name");
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Save project view",
+            Content = nameBox,
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        var view = new SavedProjectView(nameBox.Text, FilterBox.Text, SelectedSort);
+        if (!AppServices.Organization.SaveView(view))
+        {
+            ShowError("Could not save project view", "Choose a name and check that local organization data can be written.");
+            return;
+        }
+
+        RefreshSavedViews(view.Name);
+    }
+
+    private void RemoveProjectViewButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (SavedViewsBox.SelectedItem is not SavedProjectView view)
+        {
+            return;
+        }
+
+        if (!AppServices.Organization.RemoveView(view.Name))
+        {
+            ShowError("Could not remove project view", "Check that local organization data can be written.");
+            return;
+        }
+
+        RefreshSavedViews();
+    }
+
+    private void HideArchivedCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_initializingProjectList
+            && !AppServices.Organization.SetHideArchived(HideArchivedCheckBox.IsChecked == true))
+        {
+            ShowError("Could not save archive preference", "Check that local organization data can be written.");
         }
     }
 
@@ -69,21 +303,175 @@ public sealed partial class ProjectsPage : Page
         DetailTitle.Text = p.Name;
         DetailPath.Text = p.Path;
         DetailWorkspaceBadge.Visibility = p.IsWorkspace ? Visibility.Visible : Visibility.Collapsed;
+        var organization = AppServices.Organization.Get(p.Path);
+        PinProjectButton.Content = organization.IsPinned ? "Unpin" : "Pin";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            PinProjectButton,
+            organization.IsPinned ? "Unpin project" : "Pin project");
+        ArchiveProjectButton.Content = organization.IsArchived ? "Unarchive" : "Archive";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            ArchiveProjectButton,
+            organization.IsArchived ? "Unarchive project" : "Archive project");
+        ProjectTagsBox.Text = string.Join(", ", organization.Tags);
+        ProjectTagColorBox.SelectedIndex = ProjectOrganizationStore.TagColors
+            .ToList()
+            .FindIndex(color => string.Equals(color, organization.TagColor, StringComparison.OrdinalIgnoreCase));
+        ProjectOrganizationStatusText.Text = organization.LastOpened is { } opened
+            ? $"Pinned projects appear first · Last opened {opened.ToLocalTime():g}"
+            : "Pinned projects appear first · Open actions update recently-opened ordering.";
 
         OverviewBranch.Text = p.Branch;
         OverviewVersion.Text = p.VersionDisplay;
 
         // "No remote" is a fact about this folder, not a promise about a future
         // version: a workspace like this one has no remote and works fine.
-        OverviewRepo.Text = p.HasRemote
-            ? $"{p.RemoteHost} — remote configured"
-            : "No remote — everything here is local";
+        OverviewRepo.Text = p.DetailsPending
+            ? "Reading local Git details…"
+            : p.HasRemote
+                ? $"{p.RemoteHost} — remote configured"
+                : "No remote — everything here is local";
 
-        OverviewTree.Text = p.Dirty ? "dirty — uncommitted changes present" : "clean";
+        OverviewTree.Text = p.DetailsPending
+            ? "Reading working-tree state…"
+            : p.Dirty ? "dirty — uncommitted changes present" : "clean";
         OverviewCommit.Text = p.RecentCommits.FirstOrDefault()?.Subject ?? "—";
         ApplyBuildBadge(p);
         ApplyBuildProfile(p);
         _ = LoadGitDetailsAsync(p);
+        _targetCancellation?.Cancel();
+        WorkspaceTargetsList.ItemsSource = null;
+        WorkspaceTargetsStatusText.Text = "Expand to discover workspace targets.";
+        if (WorkspaceTargetsToggle.IsChecked == true)
+        {
+            _ = LoadWorkspaceTargetsAsync(p);
+        }
+    }
+
+    private void WorkspaceTargetsToggle_Checked(object sender, RoutedEventArgs e)
+    {
+        WorkspaceTargetsPanel.Visibility = Visibility.Visible;
+        if (Selected is { } project)
+        {
+            _ = LoadWorkspaceTargetsAsync(project);
+        }
+    }
+
+    private void WorkspaceTargetsToggle_Unchecked(object sender, RoutedEventArgs e)
+    {
+        _targetCancellation?.Cancel();
+        WorkspaceTargetsPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private async Task LoadWorkspaceTargetsAsync(ProjectModel project)
+    {
+        _targetCancellation?.Cancel();
+        _targetCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _targetCancellation = cancellation;
+        WorkspaceTargetsList.ItemsSource = null;
+        WorkspaceTargetsStatusText.Text = "Discovering solution and project files…";
+
+        try
+        {
+            var targets = await Task.Run(
+                () => WorkspaceTargetDiscovery.Discover(project.Path),
+                cancellation.Token);
+            if (cancellation.IsCancellationRequested
+                || !string.Equals(Selected?.Path, project.Path, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            WorkspaceTargetsList.ItemsSource = targets;
+            WorkspaceTargetsStatusText.Text = targets.Count == 0
+                ? "No solution or project files were found within the supported workspace depth."
+                : $"{targets.Count} target(s) found. Opening a target uses its registered Windows app.";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ShowError("Could not discover workspace targets", ex.Message);
+            WorkspaceTargetsStatusText.Text = "Target discovery failed.";
+        }
+    }
+
+    private void WorkspaceTargetOpenButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string path } || Selected is not { } project)
+        {
+            return;
+        }
+
+        if (!ProjectOpenActions.OpenWithDefaultApp(path))
+        {
+            ShowError("Could not open workspace target", path);
+            return;
+        }
+
+        _ = AppServices.Organization.MarkOpened(project.Path);
+    }
+
+    private void PinProjectButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Selected is not { } project)
+        {
+            return;
+        }
+
+        var current = AppServices.Organization.Get(project.Path);
+        if (!AppServices.Organization.SetPinned(project.Path, !current.IsPinned))
+        {
+            ShowError("Could not save project pin", "Check that DevDesk can write its local project-organization file.");
+            return;
+        }
+
+        PinProjectButton.Content = current.IsPinned ? "Pin" : "Unpin";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            PinProjectButton,
+            current.IsPinned ? "Pin project" : "Unpin project");
+    }
+
+    private void ArchiveProjectButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Selected is not { } project)
+        {
+            return;
+        }
+
+        var current = AppServices.Organization.Get(project.Path);
+        if (!AppServices.Organization.SetArchived(project.Path, !current.IsArchived))
+        {
+            ShowError("Could not save archive state", "Check that local project-organization data can be written.");
+            return;
+        }
+
+        ArchiveProjectButton.Content = current.IsArchived ? "Archive" : "Unarchive";
+    }
+
+    private void SaveProjectTagsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Selected is not { } project)
+        {
+            return;
+        }
+
+        var tags = ProjectTagsBox.Text.Split(
+            new[] { ',', ';', '\r', '\n' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var color = ProjectTagColorBox.SelectedItem is ComboBoxItem item
+            ? item.Content?.ToString() ?? ProjectOrganizationStore.TagColors[0]
+            : ProjectOrganizationStore.TagColors[0];
+        if (!AppServices.Organization.SetTags(project.Path, tags, color))
+        {
+            ShowError("Could not save project tags", "Check that DevDesk can write its local project-organization file.");
+            return;
+        }
+
+        ProjectOrganizationStatusText.Text = tags.Length == 0
+            ? "Tags cleared. Pinned projects appear first."
+            : $"{tags.Length} tag(s) saved. Pinned projects appear first.";
     }
 
     /// <summary>
@@ -277,6 +665,23 @@ public sealed partial class ProjectsPage : Page
         OperationStatus.Visibility = Visibility.Visible;
         OperationMessage.Text = "Reading Git details…";
         SetOperationButtonsEnabled(false);
+
+        if (project.StatusText == "Not a git repository")
+        {
+            ChangesEmpty.Text = "Git changes are unavailable for this folder.";
+            CommitsEmpty.Text = "Git history is unavailable for this folder.";
+            BranchesEmpty.Text = "Git branches are unavailable for this folder.";
+            TagsEmpty.Text = "Git tags are unavailable for this folder.";
+            ChangesEmpty.Visibility = Visibility.Visible;
+            CommitsEmpty.Visibility = Visibility.Visible;
+            BranchesEmpty.Visibility = Visibility.Visible;
+            TagsEmpty.Visibility = Visibility.Visible;
+            RemoteSummary.Text = "No Git repository.";
+            TrackingSummary.Text = "Git tracking is unavailable for this folder.";
+            OperationStatus.Visibility = Visibility.Collapsed;
+            SetOperationButtonsEnabled(false);
+            return;
+        }
 
         try
         {
@@ -1083,7 +1488,10 @@ public sealed partial class ProjectsPage : Page
         if (!ProjectOpenActions.OpenWithDefaultApp(target))
         {
             ShowError("Could not open the project", target);
+            return;
         }
+
+        _ = AppServices.Organization.MarkOpened(project.Path);
     }
 
     private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
@@ -1095,7 +1503,10 @@ public sealed partial class ProjectsPage : Page
         if (!ProjectOpenActions.OpenInExplorer(project.Path))
         {
             ShowError("Could not open the folder", project.Path);
+            return;
         }
+
+        _ = AppServices.Organization.MarkOpened(project.Path);
     }
 
     private void ShowError(string title, string message)

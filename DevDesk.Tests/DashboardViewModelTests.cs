@@ -35,7 +35,7 @@ public class DashboardViewModelTests
         Assert.Equal("1", viewModel.CleanCountText);
         Assert.Equal("1", viewModel.AttentionCountText);
         Assert.Equal("2", viewModel.RemoteCountText);
-        Assert.Equal("2 in DevEcosystem", viewModel.ProjectsPillText);
+        Assert.Equal("2 across enabled roots", viewModel.ProjectsPillText);
         Assert.Contains("need attention", viewModel.Subtitle, StringComparison.Ordinal);
         Assert.Contains("Updated ", viewModel.LastRefreshText, StringComparison.Ordinal);
         Assert.False(viewModel.IsBusy);
@@ -135,6 +135,74 @@ public class DashboardViewModelTests
     }
 
     [Fact]
+    public async Task Dashboard_SearchShowsMatchingResultsAndAnHonestNoMatchState()
+    {
+        var engine = new FakeScanEngine
+        {
+            Projects = new[]
+            {
+                ProjectCatalogTests.Project("Alpha"),
+                ProjectCatalogTests.Project("Beta"),
+            },
+        };
+        var viewModel = new DashboardViewModel(new ProjectCatalog(engine));
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        viewModel.UpdateQuery("beta", ProjectSortOrder.Name);
+
+        Assert.Equal("Beta", Assert.Single(viewModel.Projects).Model.Name);
+        Assert.Equal("1 of 2 projects", viewModel.ProjectsPillText);
+        Assert.Equal(Visibility.Visible, viewModel.ProjectsVisibility);
+
+        viewModel.UpdateQuery("no match", ProjectSortOrder.Name);
+
+        Assert.Empty(viewModel.Projects);
+        Assert.Equal("No matching projects", viewModel.EmptyTitle);
+        Assert.Equal("Try a different search or clear the filter.", viewModel.EmptyMessage);
+        Assert.Equal(Visibility.Visible, viewModel.EmptyVisibility);
+        Assert.Equal("0 of 2 projects", viewModel.ProjectsPillText);
+    }
+
+    [Fact]
+    public void Dashboard_IncrementalSnapshot_ReusesUnchangedCardsAndReplacesChangedCards()
+    {
+        var catalog = new ProjectCatalog(new FakeScanEngine());
+        var viewModel = new DashboardViewModel(catalog);
+        var alpha = ProjectCatalogTests.Project("Alpha");
+        var beta = ProjectCatalogTests.Project("Beta");
+        var emptyProjects = viewModel.Projects;
+        viewModel.ApplySnapshot(new CatalogSnapshot(new[] { alpha, beta }, null));
+
+        Assert.NotSame(emptyProjects, viewModel.Projects);
+        var alphaCard = viewModel.Projects[0];
+        var betaCard = viewModel.Projects[1];
+        var updatedAlpha = new ProjectModel
+        {
+            Name = "Zeta",
+            Path = alpha.Path,
+            Branch = "feature",
+            Version = alpha.Version,
+        };
+
+        viewModel.ApplySnapshot(new CatalogSnapshot(
+            new[] { updatedAlpha, beta },
+            null,
+            freshness: CatalogFreshness.Partial));
+
+        Assert.NotSame(alphaCard, viewModel.Projects[1]);
+        Assert.Equal("Zeta", viewModel.Projects[1].Name);
+        Assert.Equal("feature", viewModel.Projects[1].Branch);
+        Assert.Same(betaCard, viewModel.Projects[0]);
+
+        viewModel.UpdateQuery("beta", ProjectSortOrder.Name);
+        Assert.Same(betaCard, Assert.Single(viewModel.Projects));
+
+        viewModel.UpdateQuery(string.Empty, ProjectSortOrder.Name);
+        Assert.Same(betaCard, viewModel.Projects[0]);
+        Assert.NotSame(alphaCard, viewModel.Projects[1]);
+    }
+
+    [Fact]
     public async Task Dashboard_JoinsTheLastRunFromHistoryAndNeverBorrowsANumber()
     {
         using var sandbox = new SettingsSandbox();
@@ -193,7 +261,7 @@ public class DashboardViewModelTests
         var catalog = new ProjectCatalog(new FakeScanEngine());
         var viewModel = new DashboardViewModel(catalog);
 
-        Assert.Contains(catalog.ScanRoot, viewModel.ScanPathText, StringComparison.Ordinal);
+        Assert.Contains("enabled scan root(s)", viewModel.ScanPathText, StringComparison.Ordinal);
         Assert.Contains("excludes DevDesk", viewModel.ScanPathText, StringComparison.Ordinal);
     }
 }

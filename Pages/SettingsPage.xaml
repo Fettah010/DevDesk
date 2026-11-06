@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:DevDesk.Models"
     xmlns:ctk="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
 
@@ -23,7 +24,12 @@
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
         </StackPanel>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer
+            x:Name="SettingsContentScrollViewer"
+            Grid.Row="1"
+            VerticalScrollBarVisibility="Auto"
+            AutomationProperties.AutomationId="SettingsContentScrollViewer"
+            AutomationProperties.Name="Settings sections">
             <StackPanel Spacing="8" MaxWidth="760" HorizontalAlignment="Left">
 
                 <TextBlock
@@ -59,23 +65,86 @@
 
                 <ctk:SettingsCard
                     Header="Scan roots"
-                    Description="Nested git repos and solutions are detected automatically. Hidden and build folders are ignored. A second root arrives in v0.7.0.">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock x:Name="ScanRootsText" FontSize="12" VerticalAlignment="Center"/>
+                    Description="Choose local or UNC folders to scan. DevDesk reads repository state only; it never changes the folders.">
+                    <StackPanel Spacing="10" VerticalAlignment="Center">
+                        <ListView
+                            x:Name="RootList"
+                            Height="156"
+                            SelectionMode="Single"
+                            SelectionChanged="RootList_SelectionChanged"
+                            AutomationProperties.Name="Configured project scan roots">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:ScanRootSettings">
+                                    <StackPanel Spacing="2" Padding="0,3">
+                                        <TextBlock Text="{x:Bind Path}" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Add folder" Click="AddRootButton_Click" CornerRadius="8"/>
+                            <Button Content="Enable / disable" Click="ToggleRootButton_Click" CornerRadius="8"/>
+                            <Button Content="Move up" Click="MoveRootUpButton_Click" CornerRadius="8"/>
+                            <Button Content="Move down" Click="MoveRootDownButton_Click" CornerRadius="8"/>
+                            <Button Content="Remove" Click="RemoveRootButton_Click" CornerRadius="8"/>
+                        </StackPanel>
+                        <TextBlock
+                            x:Name="RootStatusText"
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="Wrap"/>
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="100"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="RootDepthBox"
+                                Header="Depth (1–8)"
+                                PlaceholderText="2"
+                                AutomationProperties.Name="Selected root scan depth"/>
+                            <TextBox
+                                Grid.Column="1"
+                                x:Name="RootIgnoresBox"
+                                Header="Ignore rules (one glob per line; prefix ! to include)"
+                                AcceptsReturn="True"
+                                TextWrapping="Wrap"
+                                Height="86"
+                                AutomationProperties.Name="Selected root ignore rules"/>
+                        </Grid>
                         <Button
-                            x:Name="AddRootButton"
-                            CornerRadius="8"
-                            IsEnabled="False"
-                            AutomationProperties.Name="Add a scan root (arrives in v0.7.0)"
-                            ToolTipService.ToolTip="Adding a scan root arrives in v0.7.0">
-                            <FontIcon Glyph="&#xE710;" FontSize="14"/>
-                        </Button>
+                            x:Name="SaveRootSettingsButton"
+                            Content="Save root settings"
+                            Click="SaveRootSettingsButton_Click"
+                            CornerRadius="8"/>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="IgnorePreviewPathBox"
+                                Header="Preview relative path"
+                                PlaceholderText="src\bin\generated"
+                                AutomationProperties.Name="Relative path to preview against selected root ignores"/>
+                            <Button
+                                Grid.Column="1"
+                                Content="Preview"
+                                Click="PreviewIgnoreButton_Click"
+                                VerticalAlignment="Bottom"
+                                CornerRadius="8"/>
+                        </Grid>
+                        <TextBlock
+                            x:Name="IgnorePreviewResultText"
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="Wrap"/>
                     </StackPanel>
                 </ctk:SettingsCard>
 
                 <ctk:SettingsCard
                     Header="Ignore patterns"
-                    Description="Folders that are never walked. This build uses a fixed list; a user-editable list arrives in v0.7.0.">
+                    Description="Protected Git metadata and junctions are always skipped. Root rules are applied in order and support ! negation.">
                     <TextBlock
                         x:Name="IgnoresText"
                         Style="{ThemeResource CaptionTextBlockStyle}"
