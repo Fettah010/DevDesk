@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------
 # The same gate CI runs (.github/workflows/ci.yml), on your machine.
 #
-#   .\Scripts\ci.ps1                 # build Release + full test suite (x64)
+#   .\Scripts\ci.ps1                 # build Release + headless test suite (x64)
 #   .\Scripts\ci.ps1 -Configuration Debug
 #   .\Scripts\ci.ps1 -Filter "FullyQualifiedName~DocsHonestyTests"
 #
@@ -10,6 +10,8 @@
 # to forget is baked in. A local run and a CI run are then the same thing, which
 # is the only way "it passed here" means anything.
 #
+# The resource-intensive v0.7 scale measurements are opt-in through
+# Scripts\benchmark-v07.ps1 and do not slow or destabilise the CI gate.
 # Exit code is 0 only when both steps pass.
 # ------------------------------------------------------------------------------
 
@@ -37,11 +39,17 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet is not usable (exit $LASTEXITCODE)." }
 $started = Get-Date
 
 if (-not $SkipBuild) {
-    Write-Step "Build ($Configuration, x64)"
-    dotnet build (Join-Path $ProjectRoot "DevDesk.csproj") -c $Configuration -p:Platform=x64
+    Write-Step "Restore test and app dependencies (x64)"
+    dotnet restore (Join-Path $ProjectRoot "DevDesk.Tests") -p:Platform=x64
     if ($LASTEXITCODE -ne 0) {
-        Write-Host ""
-        Write-Host "CI FAILED: the build did not compile." -ForegroundColor Red
+        Write-Host "CI FAILED: dependency restore failed." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Step "Build app and tests ($Configuration, x64)"
+    dotnet build (Join-Path $ProjectRoot "DevDesk.Tests") -c $Configuration -p:Platform=x64 --no-restore
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "CI FAILED: the app or test project did not compile." -ForegroundColor Red
         exit 1
     }
 }
@@ -51,11 +59,15 @@ $testArgs = @(
     (Join-Path $ProjectRoot "DevDesk.Tests"),
     "-c", $Configuration,
     "-p:Platform=x64",
+    "--no-build",
+    "--no-restore",
     "--logger", "trx;LogFileName=test-results.trx",
     "--results-directory", $ResultsDirectory
 )
 if (-not [string]::IsNullOrWhiteSpace($Filter)) {
     $testArgs += @("--filter", $Filter)
+} else {
+    $testArgs += @("--filter", "Category!=V07Benchmarks")
 }
 
 dotnet test @testArgs

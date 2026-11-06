@@ -85,10 +85,28 @@ function Find-Descendants($element, $controlType) {
     return $element.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
 }
 
+function Find-ByAutomationId($element, [string]$automationId) {
+    $condition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, $automationId)
+    return $element.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+}
+
+function Find-ByName($element, [string]$name) {
+    $condition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, $name)
+    return $element.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+}
+
 function Select-NavigationItem($window, [string]$name) {
     foreach ($item in (Find-Descendants $window ([System.Windows.Automation.ControlType]::ListItem))) {
         if ($item.Current.Name -eq $name) {
-            $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+            $invoke = $null
+            if ($item.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)) {
+                $invoke.Invoke()
+            }
+            else {
+                $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+            }
             return
         }
     }
@@ -141,7 +159,13 @@ try {
     Check "placement is pulled back onto a screen" {
         $rect = $window.Current.BoundingRectangle
         if ($rect.X -lt 0 -or $rect.Y -lt 0) { throw "window starts off-screen at $($rect.X),$($rect.Y)" }
-        if ($rect.Width -ne 1240 -or $rect.Height -ne 800) { throw "size is $($rect.Width)x$($rect.Height), expected 1240x800" }
+        # UI Automation reports the visible frame, while AppWindow placement
+        # stores the outer rectangle. Windows can exclude invisible resize
+        # borders from the UIA bounds, so verify a tight tolerance here and the
+        # exact restored dimensions in the app's placement log below.
+        if ([Math]::Abs($rect.Width - 1240) -gt 24 -or [Math]::Abs($rect.Height - 800) -gt 16) {
+            throw "visible size is $($rect.Width)x$($rect.Height), expected approximately 1240x800"
+        }
 
         $log = Read-Log
         if ($log -notmatch "Window placement restored to 1240x800 at") { throw "no placement log line" }
@@ -179,11 +203,26 @@ try {
 
     Check "check for updates asks the updater" {
         Select-NavigationItem $window "Settings"
-        Start-Sleep -Milliseconds 1200
 
+        $scrollViewer = Find-ByAutomationId $window "SettingsContentScrollViewer"
+        $scrollDeadline = (Get-Date).AddSeconds(10)
+        while ($null -eq $scrollViewer -and (Get-Date) -lt $scrollDeadline) {
+            $scrollViewer = Find-ByAutomationId $window "SettingsContentScrollViewer"
+            if ($null -eq $scrollViewer) { $scrollViewer = Find-ByName $window "Settings sections" }
+            if ($null -eq $scrollViewer) { Start-Sleep -Milliseconds 200 }
+        }
+        if ($null -eq $scrollViewer) { throw "the Settings scroll area was not found" }
+        $scroll = $scrollViewer.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern)
         $button = $null
-        foreach ($candidate in (Find-Descendants $window ([System.Windows.Automation.ControlType]::Button))) {
-            if ($candidate.Current.Name -like "*Check for updates*") { $button = $candidate; break }
+        for ($page = 0; $page -lt 8 -and $null -eq $button; $page++) {
+            foreach ($candidate in (Find-Descendants $window ([System.Windows.Automation.ControlType]::Button))) {
+                if ($candidate.Current.Name -like "*Check for updates*") { $button = $candidate; break }
+            }
+            if ($null -eq $button) {
+                $scroll.Scroll([System.Windows.Automation.ScrollAmount]::LargeIncrement,
+                    [System.Windows.Automation.ScrollAmount]::NoAmount)
+                Start-Sleep -Milliseconds 250
+            }
         }
         if ($null -eq $button) { throw "the Check for updates button was not found" }
 

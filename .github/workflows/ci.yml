@@ -1,17 +1,19 @@
 name: CI
 
-# The gate every change goes through (roadmap F15): a build and the full test
+# The gate every change goes through (roadmap F15): a build and the headless test
 # suite on the platform DevDesk actually ships (x64), before anything can be
 # tagged. The required check for branch protection is the job named
 # "Build & test".
 #
-#   dotnet build DevDesk.csproj -c Release -p:Platform=x64
-#   dotnet test DevDesk.Tests -c Release -p:Platform=x64
+#   dotnet restore DevDesk.Tests -p:Platform=x64
+#   dotnet build DevDesk.Tests -c Release -p:Platform=x64 --no-restore
+#   dotnet test DevDesk.Tests -c Release -p:Platform=x64 --no-build --no-restore --filter "Category!=V07Benchmarks"
 #
-# The same two commands run locally through Scripts/ci.ps1, so "it passed on my
-# machine" and "it passed in CI" mean the same thing. The .NET SDK comes from
-# global.json (single source of truth) - never a floating version, or a machine
-# and CI could compile with different compilers and disagree about warnings.
+# The same restore/build/test sequence runs locally through Scripts/ci.ps1, so
+# "it passed on my machine" and "it passed in CI" mean the same thing. The .NET
+# SDK comes from global.json (single source of truth) - never a floating
+# version, or a machine and CI could compile with different compilers and
+# disagree about warnings.
 
 on:
   push:
@@ -66,14 +68,22 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      - name: Build
+      - name: Restore
         shell: pwsh
-        run: dotnet build DevDesk.csproj -c Release -p:Platform=x64
+        run: dotnet restore DevDesk.Tests -p:Platform=x64
+
+      # Building the test project builds DevDesk through its project reference.
+      # Reusing those outputs avoids the app build being repeated by dotnet test.
+      - name: Build app and tests
+        shell: pwsh
+        run: dotnet build DevDesk.Tests -c Release -p:Platform=x64 --no-restore
 
       - name: Test
         shell: pwsh
         run: |
           dotnet test DevDesk.Tests -c Release -p:Platform=x64 `
+            --no-build --no-restore `
+            --filter "Category!=V07Benchmarks" `
             --logger "trx;LogFileName=test-results.trx" `
             --results-directory artifacts/test-results
 
