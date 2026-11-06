@@ -47,36 +47,43 @@ public sealed partial class MainWindow : Window
         ApplyMinimumSize();
 
         // Register this window's content as the theme root so ThemeService can
-        // flip light/dark from any page.
+        // flip light/dark from any page. The root assignment is cheap; the
+        // actual theme apply walks the whole element tree resolving ThemeResource
+        // brushes, so it is deferred until after the window is visible so it
+        // cannot block M2 (window visible <400 ms).
         if (this.Content is FrameworkElement root)
             ThemeService.Root = root;
-        ThemeService.Apply(SettingsService.Current.Theme);
-        StartupTimeline.Current.Mark(StartupTimeline.WindowThemeReady);
-
-        // Geometry is saved on a short debounce: dragging a window raises dozens of
-        // moves, and each save is an atomic file write.
         _placementTimer = DispatcherQueue.CreateTimer();
-        _placementTimer.Interval = TimeSpan.FromMilliseconds(500);
-        _placementTimer.IsRepeating = false;
-        _placementTimer.Tick += PlacementTimer_Tick;
-
-        // The running strip reads the centre's clock, never a second stopwatch:
-        // the elapsed time on the title bar and the duration in Activity are the
-        // same measurement (gotcha 15).
         _activityTimer = DispatcherQueue.CreateTimer();
-        _activityTimer.Interval = TimeSpan.FromSeconds(1);
-        _activityTimer.IsRepeating = true;
-        _activityTimer.Tick += (_, _) => UpdateRunningElapsed();
 
         AppServices.Activity.Changed += Activity_Changed;
         _activitySubscribed = true;
-        RefreshActivitySurfaces();
         UpdateTitleBarInset();
 
         AppWindow.Changed += AppWindow_Changed;
         Activated += MainWindow_Activated;
         Closed += MainWindow_Closed;
         StartupTimeline.Current.Mark(StartupTimeline.WindowSetupReady);
+    }
+
+    /// <summary>
+    /// UI setup that is not needed before the window is visible: timer
+    /// configuration and the initial activity-surface refresh. Deferred off the
+    /// M2 critical path so the native window can appear without this work. The
+    /// timer objects themselves are created in the constructor; only their
+    /// handlers and the first surface refresh run here.
+    /// </summary>
+    internal void InitializePostVisibility()
+    {
+        _placementTimer.Interval = TimeSpan.FromMilliseconds(500);
+        _placementTimer.IsRepeating = false;
+        _placementTimer.Tick += PlacementTimer_Tick;
+
+        _activityTimer.Interval = TimeSpan.FromSeconds(1);
+        _activityTimer.IsRepeating = true;
+        _activityTimer.Tick += (_, _) => UpdateRunningElapsed();
+
+        RefreshActivitySurfaces();
     }
 
     /// <summary>Brings this window forward; a second launch redirects here.</summary>

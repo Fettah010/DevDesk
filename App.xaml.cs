@@ -50,6 +50,14 @@ public partial class App : Application
 
         StartupTimeline.Current.Mark(StartupTimeline.WindowActivated);
         m_window.RecordNativeWindowVisibility();
+        // Deferred from the MainWindow constructor: applying the theme walks the
+        // whole element tree resolving ThemeResource brushes. Doing it here, after
+        // the native window is visible, keeps M2 (window visible <400 ms) from being
+        // blocked by theme resolution. A brief un-themed flash is acceptable; the
+        // theme toggles the very next frame.
+        ThemeService.Apply(SettingsService.Current.Theme);
+        StartupTimeline.Current.Mark(StartupTimeline.WindowThemeReady);
+        m_window.InitializePostVisibility();
         m_window.StartUiResponsivenessMonitoring();
 
         // A second launch is redirected to this instance by SingleInstance; its
