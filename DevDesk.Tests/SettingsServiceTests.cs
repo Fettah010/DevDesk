@@ -184,6 +184,49 @@ public class SettingsServiceTests
         Assert.Equal(ScanEngine.DefaultScanRoot, root.Path);
         Assert.Equal(ScanEngine.DefaultMaxDepth, root.Depth);
         Assert.Equal(PathHygiene.IgnoredFolderNames, root.Ignores);
+        Assert.True(root.Enabled);
+    }
+
+    [Fact]
+    public void Settings_RoundTripsMultipleRootsAndEnabledState()
+    {
+        using var sandbox = new SettingsSandbox();
+        sandbox.WriteFile(
+            """
+            {
+              "schemaVersion": 1,
+              "roots": [
+                { "path": "C:\\first", "depth": 2, "enabled": true, "ignores": ["bin"] },
+                { "path": "D:\\second", "depth": 4, "enabled": false, "ignores": ["obj"] }
+              ]
+            }
+            """);
+
+        var service = sandbox.NewService();
+        Assert.Equal(2, service.Settings.Roots.Count);
+        Assert.True(service.Settings.Roots[0].Enabled);
+        Assert.False(service.Settings.Roots[1].Enabled);
+        Assert.Equal(4, service.Settings.Roots[1].Depth);
+
+        service.Save();
+        var reloaded = sandbox.NewService();
+
+        Assert.Equal(2, reloaded.Settings.Roots.Count);
+        Assert.Equal(@"D:\second", reloaded.Settings.Roots[1].Path);
+        Assert.False(reloaded.Settings.Roots[1].Enabled);
+    }
+
+    [Fact]
+    public void Settings_PreservesAnExplicitlyEmptyRootList()
+    {
+        using var sandbox = new SettingsSandbox();
+        sandbox.WriteFile("""{ "schemaVersion": 1, "roots": [] }""");
+
+        var service = sandbox.NewService();
+
+        Assert.Empty(service.Settings.Roots);
+        service.Save();
+        Assert.Empty(sandbox.NewService().Settings.Roots);
     }
 
     [Fact]

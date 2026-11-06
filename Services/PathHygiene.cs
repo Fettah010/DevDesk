@@ -15,10 +15,10 @@ namespace DevDesk.Services;
 public static class PathHygiene
 {
     /// <summary>
-    /// Folders that never contain a project worth a card. <c>copilot-worktrees</c>
-    /// is deliberate (roadmap D8): its worktrees are real repos, and without the
-    /// ignore they would appear as three ghost cards of projects that already
-    /// have one.
+    /// Default scan exclusions. <c>copilot-worktrees</c> is deliberate
+    /// (roadmap D8): those checkouts can be scanned from an explicitly
+    /// configured root, but should not appear as duplicate cards in the default
+    /// ecosystem scan.
     /// </summary>
     public static IReadOnlyList<string> IgnoredFolderNames { get; } = new ReadOnlyCollection<string>(new[]
     {
@@ -47,6 +47,10 @@ public static class PathHygiene
 
         return IgnoredFolderNames.Contains(name, StringComparer.OrdinalIgnoreCase);
     }
+
+    /// <summary>Rules that cannot be relaxed by per-root ignore negation.</summary>
+    public static bool IsSafetyIgnoredFolderName(string? name) =>
+        string.Equals(name, ".git", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// A repo is a folder whose <c>.git</c> entry exists — as a directory
@@ -103,18 +107,29 @@ public static class PathHygiene
     /// <summary>Directory listing that never throws and is ordered, for determinism.</summary>
     public static IEnumerable<string> SafeEnumerateDirectories(string directory)
     {
-        string[] children;
+        return TryEnumerateDirectories(directory, out var children, out _)
+            ? children
+            : Array.Empty<string>();
+    }
+
+    public static bool TryEnumerateDirectories(
+        string directory,
+        out string[] children,
+        out string? error)
+    {
         try
         {
             children = Directory.GetDirectories(directory);
+            Array.Sort(children, StringComparer.OrdinalIgnoreCase);
+            error = null;
+            return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            return Array.Empty<string>();
+            children = Array.Empty<string>();
+            error = ex.Message;
+            return false;
         }
-
-        Array.Sort(children, StringComparer.OrdinalIgnoreCase);
-        return children;
     }
 
     /// <summary>File listing that never throws and is ordered, for determinism.</summary>

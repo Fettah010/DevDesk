@@ -69,7 +69,12 @@ public static class SettingsProjection
     {
         var roots = new List<ScanRootSettings>();
 
-        foreach (var entry in array ?? new JsonArray())
+        if (array is null)
+        {
+            return new List<ScanRootSettings> { new() };
+        }
+
+        foreach (var entry in array)
         {
             if (entry is not JsonObject obj)
             {
@@ -80,6 +85,7 @@ public static class SettingsProjection
             {
                 Path = GetString(obj, "path", ScanEngine.DefaultScanRoot),
                 Depth = GetInt(obj, "depth", ScanEngine.DefaultMaxDepth),
+                Enabled = GetBool(obj, "enabled", true),
             };
 
             if (obj["ignores"] is JsonArray ignores)
@@ -99,7 +105,7 @@ public static class SettingsProjection
             roots.Add(root);
         }
 
-        return roots.Count > 0 ? roots : new List<ScanRootSettings> { new() };
+        return roots;
     }
 
     private static JsonArray WriteRoots(List<ScanRootSettings> roots, JsonArray? existing)
@@ -114,6 +120,7 @@ public static class SettingsProjection
 
             item["path"] = roots[index].Path;
             item["depth"] = roots[index].Depth;
+            item["enabled"] = roots[index].Enabled;
             item["ignores"] = new JsonArray(roots[index].Ignores
                 .Select(name => (JsonNode?)JsonValue.Create(name))
                 .ToArray());

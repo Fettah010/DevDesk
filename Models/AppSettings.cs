@@ -11,10 +11,11 @@ public sealed class ScanRootSettings
 
     public int Depth { get; set; } = ScanEngine.DefaultMaxDepth;
 
+    public bool Enabled { get; set; } = true;
+
     /// <summary>
-    /// Folder names (or glob-style patterns, from 0.7.0) that are never walked.
-    /// The defaults come from <see cref="PathHygiene"/> so the settings file and
-    /// the scanner cannot disagree about what is ignored.
+    /// Ordered folder/glob exclusions for this root. Safety exclusions such as
+    /// Git metadata remain protected independently of these user rules.
     /// </summary>
     public List<string> Ignores { get; set; } = new(PathHygiene.IgnoredFolderNames);
 }

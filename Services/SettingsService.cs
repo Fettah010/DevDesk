@@ -211,16 +211,15 @@ public sealed class SettingsService
             ? theme.ToString()
             : nameof(AppTheme.System);
 
-        if (settings.Roots.Count == 0)
+        foreach (var root in settings.Roots)
         {
-            settings.Roots.Add(new ScanRootSettings());
-        }
+            root.Depth = Math.Clamp(root.Depth, 1, 8);
+            if (string.IsNullOrWhiteSpace(root.Path))
+            {
+                root.Path = ScanEngine.DefaultScanRoot;
+            }
 
-        var root = settings.Roots[0];
-        root.Depth = Math.Clamp(root.Depth, 1, 8);
-        if (string.IsNullOrWhiteSpace(root.Path))
-        {
-            root.Path = ScanEngine.DefaultScanRoot;
+            root.Ignores ??= new System.Collections.Generic.List<string>(PathHygiene.IgnoredFolderNames);
         }
     }
 }
