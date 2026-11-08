@@ -160,47 +160,55 @@ public sealed partial class DashboardViewModel : ViewModelBase
 
     public void ApplySnapshot(CatalogSnapshot snapshot)
     {
-        IsScanning = _catalog.IsRefreshing;
-        _latestSnapshot = snapshot;
-        _allProjects = snapshot.Projects;
-        UpdateProjectCards();
-        ProjectCountText = snapshot.Projects.Count.ToString();
-        CleanCountText = snapshot.PendingDetailsCount > 0 ? "—" : snapshot.CleanCount.ToString();
-        AttentionCountText = snapshot.PendingDetailsCount > 0 ? "—" : snapshot.AttentionCount.ToString();
-        RemoteCountText = snapshot.PendingDetailsCount > 0 ? "—" : snapshot.RemoteCount.ToString();
-        UpdateProjectsPillText();
-        LastRefreshText = snapshot.Freshness == CatalogFreshness.Partial && _catalog.IsRefreshing
-            ? $"Scanning · {_allProjects.Count} real project(s) found so far"
-            : snapshot.CapturedAt == DateTimeOffset.MinValue
-                ? "Not scanned yet"
-                : snapshot.Freshness switch
-            {
-                CatalogFreshness.Cached => $"Cached {snapshot.CapturedAt:HH:mm:ss} · refreshing",
-                CatalogFreshness.Partial when _catalog.IsRefreshing =>
-                    $"Scanning · {_allProjects.Count} project(s), {snapshot.PendingDetailsCount} details pending",
-                CatalogFreshness.Partial =>
-                    $"Partial scan · {snapshot.RootDiagnostics.Count} root/folder warning(s)",
-                CatalogFreshness.Stale => $"Stale since {snapshot.CapturedAt:HH:mm:ss} · refresh failed",
-                _ => $"Updated {snapshot.CapturedAt:HH:mm:ss} · {snapshot.Duration.TotalSeconds:0.0} s",
-            };
-
-        Subtitle = snapshot.Freshness == CatalogFreshness.Partial && _catalog.IsRefreshing
-            ? $"Scanning local roots · {_allProjects.Count} project(s) found so far."
-            : snapshot.Freshness == CatalogFreshness.Partial
-                ? $"{snapshot.RootDiagnostics.Count} root/folder warning(s); readable roots remain available."
-            : _allProjects.Count switch
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        using (PerfCounters.Current.BeginUiOperation("dashboard apply snapshot"))
         {
-            0 => "No project folders found in the enabled scan roots.",
-            _ when snapshot.AttentionCount == 0 => "All projects are healthy.",
-            _ => $"{snapshot.AttentionCount} project(s) need attention.",
-        };
+            IsScanning = _catalog.IsRefreshing;
+            _latestSnapshot = snapshot;
+            _allProjects = snapshot.Projects;
+            UpdateProjectCards();
+            ProjectCountText = snapshot.Projects.Count.ToString();
+            CleanCountText = snapshot.PendingDetailsCount > 0 ? "—" : snapshot.CleanCount.ToString();
+            AttentionCountText = snapshot.PendingDetailsCount > 0 ? "—" : snapshot.AttentionCount.ToString();
+            RemoteCountText = snapshot.PendingDetailsCount > 0 ? "—" : snapshot.RemoteCount.ToString();
+            UpdateProjectsPillText();
+            LastRefreshText = snapshot.Freshness == CatalogFreshness.Partial && _catalog.IsRefreshing
+                ? $"Scanning · {_allProjects.Count} real project(s) found so far"
+                : snapshot.CapturedAt == DateTimeOffset.MinValue
+                    ? "Not scanned yet"
+                    : snapshot.Freshness switch
+                {
+                    CatalogFreshness.Cached => $"Cached {snapshot.CapturedAt:HH:mm:ss} · refreshing",
+                    CatalogFreshness.Partial when _catalog.IsRefreshing =>
+                        $"Scanning · {_allProjects.Count} project(s), {snapshot.PendingDetailsCount} details pending",
+                    CatalogFreshness.Partial =>
+                        $"Partial scan · {snapshot.RootDiagnostics.Count} root/folder warning(s)",
+                    CatalogFreshness.Stale => $"Stale since {snapshot.CapturedAt:HH:mm:ss} · refresh failed",
+                    _ => $"Updated {snapshot.CapturedAt:HH:mm:ss} · {snapshot.Duration.TotalSeconds:0.0} s",
+                };
 
-        OnPropertyChanged(nameof(HasProjects));
-        OnPropertyChanged(nameof(IsEmpty));
-        OnPropertyChanged(nameof(EmptyVisibility));
-        OnPropertyChanged(nameof(ProjectsVisibility));
-        OnPropertyChanged(nameof(BusyVisibility));
-        UpdateEmptyState();
+            Subtitle = snapshot.Freshness == CatalogFreshness.Partial && _catalog.IsRefreshing
+                ? $"Scanning local roots · {_allProjects.Count} project(s) found so far."
+                : snapshot.Freshness == CatalogFreshness.Partial
+                    ? $"{snapshot.RootDiagnostics.Count} root/folder warning(s); readable roots remain available."
+                    : _allProjects.Count switch
+                {
+                    0 => "No project folders found in the enabled scan roots.",
+                    _ when snapshot.AttentionCount == 0 => "All projects are healthy.",
+                    _ => $"{snapshot.AttentionCount} project(s) need attention.",
+                };
+
+            OnPropertyChanged(nameof(HasProjects));
+            OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(EmptyVisibility));
+            OnPropertyChanged(nameof(ProjectsVisibility));
+            OnPropertyChanged(nameof(BusyVisibility));
+            UpdateEmptyState();
+        }
+
+        var elapsedMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        if (elapsedMs > 10)
+            LoggingService.Log.Warning("Dashboard ApplySnapshot took {ElapsedMs:F0} ms for {Count} projects (scan={IsRefreshing})", elapsedMs, snapshot.Projects.Count, _catalog.IsRefreshing);
     }
 
     public void UpdateQuery(string? query, ProjectSortOrder sortOrder)

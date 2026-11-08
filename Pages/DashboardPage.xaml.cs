@@ -26,7 +26,10 @@ public sealed partial class DashboardPage : Page
             AppServices.Catalog,
             AppServices.Activity.History,
             AppServices.Organization);
-        this.InitializeComponent();
+        using (PerfCounters.Current.BeginUiOperation("dashboard xaml initialize"))
+        {
+            this.InitializeComponent();
+        }
         _catalogUpdateTimer = DispatcherQueue.CreateTimer();
         _catalogUpdateTimer.Interval = System.TimeSpan.FromMilliseconds(50);
         _catalogUpdateTimer.IsRepeating = true;
@@ -49,8 +52,6 @@ public sealed partial class DashboardPage : Page
         // readiness mark no longer depends on the LayoutUpdated event firing at a
         // particular moment during layout.
         _catalogUpdateTimer.Start();
-
-        MarkProjectCardsReady();
     }
 
     private void DashboardPage_Unloaded(object sender, RoutedEventArgs e)
@@ -67,25 +68,50 @@ public sealed partial class DashboardPage : Page
     private void Catalog_Changed(object? sender, CatalogSnapshot snapshot) =>
         Interlocked.Exchange(ref _pendingCatalogSnapshot, snapshot);
 
+    private DateTimeOffset _lastApplyTime;
+
     private void CatalogUpdateTimer_Tick(
         Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
         object args)
     {
+        // Card readiness check runs every tick (cheap, returns early once marked).
+        MarkProjectCardsReady();
+
+        // Snapshot application is throttled during an active scan: only apply
+        // at most once every 200 ms while a scan is in flight. Applying on
+        // every progressive snapshot (card creation + binding updates +
+        // GridView container instantiation) on the UI thread is the dominant
+        // M6 dispatcher-delay contributor; the card grid shows all cards when
+        // the scan completes and OnProgress keeps BusyText current meanwhile.
         var snapshot = Interlocked.Exchange(ref _pendingCatalogSnapshot, null);
         if (snapshot is null || !_catalogSubscribed)
         {
             return;
         }
 
+        if (AppServices.Catalog.IsRefreshing
+            && DateTimeOffset.UtcNow - _lastApplyTime < TimeSpan.FromMilliseconds(200))
+        {
+            return;
+        }
+
+        _lastApplyTime = DateTimeOffset.UtcNow;
+
         using (PerfCounters.Current.BeginUiOperation("dashboard catalog update"))
         {
             ViewModel.ApplySnapshot(snapshot);
-            MarkProjectCardsReady();
         }
     }
 
     private void MarkProjectCardsReady()
     {
+        // Once the first card has a realized layout container there is nothing
+        // left to prove: stop forcing layout via ActualWidth/ActualHeight on
+        // every 50 ms catalog-update tick (that repeated layout pass is a UI
+        // thread blocker and shows up as M6 dispatcher delay).
+        if (StartupTimeline.Current.Elapsed(StartupTimeline.FirstProjectCardsReady) is { })
+            return;
+
         using (PerfCounters.Current.BeginUiOperation("dashboard card ready check"))
         {
             if (ViewModel.Projects.Count > 0
