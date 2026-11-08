@@ -69,6 +69,7 @@ public sealed class EnvironmentReport
         Add("Windows App SDK", WindowsAppSdkVersion());
         Add(".NET runtime", Describe(() => RuntimeInformation.FrameworkDescription));
         Add("git", gitVersion ?? "not found");
+        Add("git exe", GitRunner.GitExePath);
         Add("vpk", vpkVersion ?? "not found");
         Add("Scan root", scanRoot ?? ScanEngine.DefaultScanRoot);
         Add("Settings", settings);

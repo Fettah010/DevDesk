@@ -218,6 +218,7 @@ public class DiagnosticsExportTests : IDisposable
 
         Assert.Equal(AppInfo.Current.DisplayVersion, report.Value("DevDesk"));
         Assert.Equal("git version 2.47.1.windows.1", report.Value("git"));
+        Assert.False(string.IsNullOrWhiteSpace(report.Value("git exe")));
         Assert.Equal("1.2.161", report.Value("vpk"));
         Assert.Equal(ReleaseChannels.Dev, report.Value("Update channel"));
         Assert.Equal(ScanEngine.DefaultScanRoot, report.Value("Scan root"));
@@ -230,7 +231,8 @@ public class DiagnosticsExportTests : IDisposable
         Assert.Contains("DevDesk: ", text, StringComparison.Ordinal);
         Assert.Contains(".NET runtime: ", text, StringComparison.Ordinal);
         Assert.Contains("vpk: 1.2.161", text, StringComparison.Ordinal);
-        Assert.Equal(14, text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length);
+        Assert.Contains("git exe: ", text, StringComparison.Ordinal);
+        Assert.Equal(15, text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length);
     }
 
     [Fact]

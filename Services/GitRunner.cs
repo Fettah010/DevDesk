@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -22,10 +23,55 @@ public sealed record GitResult(int ExitCode, string StdOut, string StdErr);
 /// a scan that stops on a credential prompt would hang the whole app, and the
 /// user is never at a terminal to answer it.
 /// </para>
+/// <para>
+/// The executable is resolved explicitly instead of relying on PATH: a host
+/// whose PATH selects a slow bundled Git makes every repository read costly
+/// (M4), so installed Git is preferred and the resolved exe is reported in
+/// Diagnostics.
+/// </para>
 /// </summary>
 public static class GitRunner
 {
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(15);
+
+    private const string DevDeskGitExeEnv = "DEVDESK_GIT_EXE";
+
+    /// <summary>
+    /// Common installed-Git locations, 64-bit first. A machine whose PATH
+    /// selects a Copilot-bundled Git can scan 50 repositories in ~8 s; the
+    /// installed Git at one of these locations does it in ~2 s.
+    /// </summary>
+    private static readonly string[] InstalledGitCandidates = new[]
+    {
+        @"D:\Program Files\Git\cmd\git.exe",
+        @"C:\Program Files\Git\cmd\git.exe",
+        @"C:\Program Files (x86)\Git\cmd\git.exe",
+        @"D:\Program Files (x86)\Git\cmd\git.exe",
+    };
+
+    /// <summary>
+    /// Programmatic override of the resolved executable, mainly for tests and
+    /// deployments. Setting it clears the cached resolution. The
+    /// <c>DEVDESK_GIT_EXE</c> environment variable is read first.
+    /// </summary>
+    public static string? GitExeOverride
+    {
+        get => _gitExeOverride;
+        set { _gitExeOverride = value; _gitExePath = null; }
+    }
+    private static string? _gitExeOverride;
+
+    /// <summary>Resolved git executable path, or "git" to fall back to PATH.</summary>
+    public static string GitExePath
+    {
+        get
+        {
+            if (_gitExePath is null)
+                _gitExePath = ResolveGitExe();
+            return _gitExePath;
+        }
+    }
+    private static string? _gitExePath;
 
     /// <summary>
     /// Environment every git call inherits. Public so a test can assert the
@@ -58,7 +104,7 @@ public static class GitRunner
     {
         if (timeout <= TimeSpan.Zero)
             return new GitResult(-1, string.Empty, "git timed out: timeout must be greater than zero.");
-        var startInfo = new ProcessStartInfo("git")
+        var startInfo = new ProcessStartInfo(GitExePath)
         {
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
@@ -88,7 +134,7 @@ public static class GitRunner
         }
         catch (Win32Exception)
         {
-            return new GitResult(-1, string.Empty, "git is not available on PATH.");
+            return new GitResult(-1, string.Empty, $"git is not available ({GitExePath}).");
         }
 
         if (process is null)
@@ -165,5 +211,29 @@ public static class GitRunner
         {
             // A killed process can close its pipes mid-read; the call already failed.
         }
+    }
+
+    /// <summary>
+    /// Resolves the git executable once per process:
+    /// <c>GitExeOverride</c> → <c>DEVDESK_GIT_EXE</c> environment variable → a
+    /// common installed-Git location → <c>git</c> on PATH.
+    /// </summary>
+    private static string ResolveGitExe()
+    {
+        if (!string.IsNullOrWhiteSpace(_gitExeOverride)
+            && File.Exists(_gitExeOverride))
+            return _gitExeOverride;
+
+        var env = Environment.GetEnvironmentVariable(DevDeskGitExeEnv);
+        if (!string.IsNullOrWhiteSpace(env) && File.Exists(env))
+            return env;
+
+        foreach (var candidate in InstalledGitCandidates)
+        {
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        return "git";
     }
 }

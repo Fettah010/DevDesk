@@ -73,6 +73,32 @@ public class GitRunnerTests
     }
 
     [Fact]
+    public void GitRunner_GitExePath_NeverEmpty()
+    {
+        // Always resolves to something: the override, an installed Git, or
+        // "git" on PATH — never null, so a scan never fails on a null exe.
+        Assert.False(string.IsNullOrEmpty(GitRunner.GitExePath));
+    }
+
+    [Fact]
+    public void GitRunner_GitExeOverride_IsRespected()
+    {
+        var resolved = GitRunner.GitExePath;
+        Assert.False(string.IsNullOrEmpty(resolved));
+
+        var original = GitRunner.GitExeOverride;
+        try
+        {
+            GitRunner.GitExeOverride = resolved;
+            Assert.Equal(resolved, GitRunner.GitExePath);
+        }
+        finally
+        {
+            GitRunner.GitExeOverride = original;
+        }
+    }
+
+    [Fact]
     public void GitRunner_Normalize_KeepsPorcelainColumns()
     {
         var raw = "# branch.head main\r\n? leading space is data\r\n\r\n";
