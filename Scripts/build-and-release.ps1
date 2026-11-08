@@ -164,6 +164,7 @@ if (-not $SkipBuild) {
         --self-contained true `
         /p:PublishSingleFile=false `
         /p:PublishTrimmed=false `
+        /p:PublishReadyToRun=true `
         /p:WindowsAppSDKSelfContained=true `
         /p:EnableMsixTooling=true
 
