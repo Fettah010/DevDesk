@@ -156,6 +156,13 @@ public sealed class ProjectRootWatcher : IDisposable
         return !matcher.IsExcluded(relativePath) || matcher.MayContainNegatedPath(relativePath);
     }
 
+    /// <summary>
+    /// A watcher that overflowed (its buffer could not keep up) or stopped is
+    /// treated as "we no longer know what changed here": the whole root is
+    /// reconciled once the debounce settles. The tests reach this handler
+    /// directly, because provoking a real buffer overflow needs thousands of
+    /// events and is not reliable on CI.
+    /// </summary>
     private void OnWatcherError(ScanRootSettings root, Exception? error)
     {
         LoggingService.Log.Warning(error, "Filesystem watcher for {Root} overflowed or stopped; reconciling that root", root.Path);
