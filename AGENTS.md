@@ -9,21 +9,26 @@ first before making changes.
 `C:\Code\projects` (branch, version, last commits, releases per channel,
 GitHub Actions, build/run) so the terminal is no longer needed.
 
-**Current status: v0.3.0 "Build & run cockpit" implemented, not yet released;
-v0.1.0-beta is the last published release.** (v0.2.0 was completed locally and
-folded into this work — it was never tagged.) The shell, sea-blue theme
-(light/dark), navigation, the **ScanEngine** (git state + versions for every repo
-in the DevEcosystem folder), real open-in-Explorer / open-in-VS actions, window
-placement + single instance, the Diagnostics log/export pipeline and the
-**performance instrumentation** (startup marks, per-operation timings, budgets on
-screen) are real and working. Projects has local Git reads and previewed,
-confirmed write operations. Since v0.3.0 the app also builds, runs and publishes
-any project with a live searchable console, clickable MSBuild problems, a
-process-wide build queue (Activity page), and persisted build history behind the
-badges on Dashboard and Projects. Everything that is not built yet is **disabled
-with the version that brings it, or an empty state naming it** — no fake rows, no
-buttons that look live but only apologise. Later flows (TemplateService →
-v0.4.0, GitHubService → v0.5.0) are labelled, not faked. The map is
+**Current status: v0.7.0 "Scale & multi-root" implemented on `main`, not yet
+released; `v0.6.0-beta` is the last published release.** v0.7.0 is blocked on
+performance gates only (M1/M2/M6; see the performance table in
+`docs\versions\V0.7.0.md`). The shell,
+sea-blue theme (light/dark), navigation, the **ScanEngine** (git state + versions
+for every repo under any number of configured roots, with worktree identity),
+real open-in-Explorer / open-in-VS actions, window placement + single instance,
+the Diagnostics log/export pipeline and the **performance instrumentation**
+(startup marks, per-operation timings, budgets on screen) are real and working.
+Projects has local Git reads and previewed, confirmed write operations, and the
+app builds, runs and publishes any project with a live searchable console,
+clickable MSBuild problems, a process-wide build queue (Activity page), and
+persisted build history behind the badges on Dashboard and Projects. Since
+v0.5/v0.6 the app also reads GitHub releases/runs/PRs and prepares + pushes a
+release. Since v0.7.0 it caches snapshots, watches roots, searches/sorts/pins/
+tags, and expands a repository's solutions and projects. Everything that is not
+built yet is **disabled with the version that brings it, or an empty state naming
+it** — no fake rows, no buttons that look live but only apologise. The template
+wizard (TemplateService → v0.4.0) and the v0.8.0 command centre are labelled, not
+faked. The map is
 `docs\DEVDESK-ROADMAP.md`; each version's work order and evidence log is in
 `docs\versions\`.
 
@@ -194,13 +199,14 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 
 ## Versioning & releases
 
-Current version: **0.3.0-beta implemented, not yet released** (v0.1.0-beta is
-the last published release; v0.2.0 was finished locally and never tagged). Keep
+Current version: **0.6.0-beta is the last published release; v0.7.0 is
+implemented on `main` but not released** (the version quartet still reads 0.6.0
+until the release is unblocked). Keep
 `<Version>`, `<AssemblyVersion>`, `<FileVersion>` and `<InformationalVersion>` in
 `DevDesk.csproj` in sync (four fields, always) — `Scripts/bump-version.ps1`
 rewrites them together and the test suite fails when they drift.
 
-Release flow: tag (`git tag v0.3.0-beta && git push origin v0.3.0-beta`) or
+Release flow: tag (`git tag v0.7.0-beta && git push origin v0.7.0-beta`) or
 manual `workflow_dispatch`; `Scripts/build-and-release.ps1` is the single source
 of truth for publish → `vpk download` → `vpk pack` → `vpk upload`, and CI
 delegates to it. The channel comes from the tag; releases are published, never

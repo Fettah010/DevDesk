@@ -172,6 +172,62 @@ public class DocsHonestyTests
             + string.Join(Environment.NewLine, unknown));
     }
 
+    /// <summary>
+    /// The status line is the first thing a reader sees, and it went stale for
+    /// three releases while the work moved on. Whatever version it names must
+    /// exist in the roadmap and must be the newest work order in
+    /// <c>docs/versions</c>, so the copy cannot drift silently again.
+    /// </summary>
+    [Fact]
+    public void Docs_StatusLineNamesTheNewestVersionOnTheRoadmap()
+    {
+        var roadmap = File.ReadAllText(RepoLayout.Path("docs", "DEVDESK-ROADMAP.md"));
+        var statusVersion = new Regex(
+            @"(?:Status:|Current status:)[^.]*?\bv(\d+\.\d+\.\d+)\b",
+            RegexOptions.Compiled);
+        var workOrders = new Regex(@"^V(\d+\.\d+\.\d+)\.md$", RegexOptions.Compiled);
+        var newest = Directory
+            .EnumerateFiles(RepoLayout.Path("docs", "versions"), "V*.md")
+            .Select(file => workOrders.Match(Path.GetFileName(file)))
+            .Where(match => match.Success)
+            .Select(match => Version.Parse(match.Groups[1].Value))
+            .Max();
+        var offenders = new List<string>();
+
+        foreach (var name in TextFiles)
+        {
+            var file = RepoLayout.Path(name);
+            if (!File.Exists(file))
+            {
+                continue;
+            }
+
+            var match = statusVersion.Match(File.ReadAllText(file));
+            if (!match.Success)
+            {
+                offenders.Add($"{name}: no status line naming a version");
+                continue;
+            }
+
+            var quoted = match.Groups[1].Value;
+            if (!roadmap.Contains(quoted, StringComparison.Ordinal))
+            {
+                offenders.Add($"{name}: status names v{quoted}, which the roadmap does not have");
+            }
+            else if (Version.Parse(quoted) != newest)
+            {
+                offenders.Add(
+                    $"{name}: status names v{quoted}, but the newest work order is v{newest}");
+            }
+        }
+
+        Assert.True(
+            offenders.Count == 0,
+            "Status copy and the roadmap disagree:"
+            + Environment.NewLine
+            + string.Join(Environment.NewLine, offenders));
+    }
+
     /// <summary>Every page's markup and code-behind.</summary>
     private static IEnumerable<string> PageFiles()
     {

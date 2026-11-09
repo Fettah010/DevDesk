@@ -9,18 +9,27 @@ build/run/commit/tag/push and "new app from template" scaffolding. DevDesk and
 the DevTem-WinUI 3 template live together in
 **`C:\Code\projects\DevEcosystem`**; other folders there are unrelated.
 
-> **Status: v0.3.0 in progress — Build & run cockpit.** v0.1.0 "Trustworthy
-> base" is published on GitHub (v0.2.0 was completed locally and folded into
-> this work; it was never tagged). Everything on screen is either real or
-> clearly labelled with the version that will make it real — there are no fake
-> rows, no buttons that look live but only apologise, and no invented data. Today
-> DevDesk scans every repo inside `DevEcosystem` (branch, dirty state, last
-> commits, version, remote) with no network, opens repos in Explorer / Visual
-> Studio, remembers its window and route, keeps one instance per session, writes
-> a redacted diagnostics bundle, and builds / runs / publishes / tests any
-> project with a live searchable console, clickable errors and a real build
-> queue. The map is **`docs/DEVDESK-ROADMAP.md`**; each version's work order
+> **Status: v0.7.0 in progress — Scale & multi-root (unreleased).** The last
+> published release is `v0.6.0-beta`; v0.7.0 is implemented on `main` but is
+> still blocked on performance gates (see below and
+> `docs/versions/V0.7.0.md`). Everything on screen is either real or clearly
+> labelled with the version that will make it real — there are no fake rows, no
+> buttons that look live but only apologise, and no invented data. DevDesk
+> scans any number of configured roots (branch, dirty state, last commits,
+> version, remote, worktrees) with no network, paints cached cards on the next
+> launch, keeps them current through a debounced filesystem watcher, searches /
+> sorts / pins / tags projects, shows a repository's solutions and projects,
+> reads GitHub releases, workflow runs and pull requests, prepares and pushes a
+> release, opens repos in Explorer / Visual Studio, builds / runs / publishes /
+> tests any project with a live console, and writes a redacted diagnostics
+> bundle. The map is **`docs/DEVDESK-ROADMAP.md`**; each version's work order
 > lives in **`docs/versions/`**.
+>
+> Measured and recorded, still missed: startup to interactive cached cards
+> (M1, 690 ms vs < 700 ms app-side / 875 ms observed through UI Automation),
+> window visible (M2, 479–513 ms vs < 400 ms), and UI-thread blocking (M6,
+> 67–86 ms vs < 50 ms; XAML page construction is the remaining cost). Passing:
+> 8-repo scan 872 ms (M3), 50-repo scan 1.86 s (M4), working set 253 MiB (M5).
 
 ## Run it — no terminal (double-click)
 
@@ -47,6 +56,26 @@ dotnet run
   (title-bar brightness button or Settings → Appearance).
 - **Navigation**: Dashboard, Projects, Templates, GitHub, DevDesk, Activity, Settings,
   Diagnostics — the last page you were on is reopened next launch.
+- **Scan roots (v0.7.0)**: any number of roots, each with its own depth (1–8),
+  enabled flag and ordered ignore globs (`!` re-includes). The Settings page
+  lists the rules the scanner really uses and previews whether a relative path
+  would be excluded. The default root is the DevEcosystem folder; DevDesk itself
+  is never listed as a project — it gets its own page.
+- **Warm start from cache (v0.7.0)**: the last snapshot is persisted (schema 2,
+  atomic, with visible freshness) and painted before git answers, so a reopen
+  shows cards immediately. A debounced filesystem watcher rescans only the
+  repository that changed; a watcher overflow falls back to one reconciliation
+  scan of that root.
+- **Search, filter, sort, saved views (v0.7.0)**: instant in-memory filtering by
+  name, path, branch and tag, sorting by name / activity / health / version, and
+  saved views that persist.
+- **Organization (v0.7.0)**: pins, coloured tags, recently opened ordering,
+  archive/hide — stored separately from settings and reversible.
+- **Worktrees and submodules (v0.7.0)**: `.git` files (`gitdir:` pointers) are
+  parsed and deduplicated by common git directory, so a worktree never appears
+  as a second copy of its parent.
+- **Workspace expansion (v0.7.0)**: a selected repository's solutions, projects
+  and components are discovered on demand and can be opened directly.
 - **Window**: size and position are remembered and always restored onto a
   screen that still exists; minimum 960×600; a second double-click focuses the
   window that is already open instead of starting another copy.
@@ -73,22 +102,35 @@ dotnet run
   retry and open-log. Builds run one at a time; the rest queue and say so. A
   running operation also appears in the title bar with its elapsed time and a
   Stop button, and in the footer flyout.
+- **GitHub (released in v0.5.0)**: read-only releases per channel, Actions runs and
+  pull requests for a selected local repository, with a token in Windows
+  Credential Manager (public data works without one). Every request is bounded
+  to the selected repository and only while the page is open; no token is ever
+  written to settings or logs.
+- **Release from DevDesk (v0.6.0)**: "Prepare release" suggests the next version
+  for the chosen channel, drafts release notes, then — after previews and
+  confirmations — rewrites the version quartet, commits, tags locally and pushes
+  the tag, monitoring the workflow it triggered. It never force-pushes or moves
+  an existing tag.
 - **Diagnostics**: the last 2000 log events of this launch with a level and text
   filter, follow, copy, and a one-click export bundle
   (`logs/`, `environment.txt`, `settings.redacted.json`, `manifest.json`).
   Credentials are redacted on the way to disk and into the bundle. A
   **Performance** card shows the measured numbers — startup marks (window shown,
   first snapshot), last scan, last update check, last settings write, build
-  duration and working set — each beside the budget it is compared with.
-- **Settings**: theme, scan roots and ignore list (read-only, what the scanner
-  actually uses), update channel, and a **working** "Check for updates" that
-  reports the real answer — including "not installed" when run from `bin\`.
+  duration, maximum UI dispatch delay with the operation it was attributed to,
+  and working set — each beside the budget it is compared with, plus the git
+  executable and version the scanner actually uses.
+- **Settings**: theme, scan roots (add/remove/enable, depth, ordered ignore
+  rules with a live preview), GitHub token status and sign-out, update channel,
+  and a **working** "Check for updates" that reports the real answer — including
+  "not installed" when run from `bin\`.
 - **Loading**: any operation that may take a while (refresh/rescan, repo-state
   check) shows a progress overlay; the launcher shows a progress window while
   a rebuild runs.
-- **Not yet, and labelled as such**: the template
-  wizard (v0.4.0), GitHub runs & releases and
-  the token (v0.5.0), filtering and multiple scan roots (v0.7.0).
+- **Not yet, and labelled as such**: the template wizard (v0.4.0 — the page is a
+  preview and creates nothing yet), and the command palette, keyboard map, tray
+  and notifications (v0.8.0).
 
 ## Tech stack
 
@@ -101,7 +143,8 @@ dotnet run
 | CommunityToolkit.WinUI.* | `8.2.251219` | settings controls, segmented control | two controls re-implemented by hand |
 
 - No external GitHub/git SDK — git is driven through `Services/GitRunner.cs`
-  (argument lists, no shell interpolation); GitHub REST arrives in 0.5.0.
+  and GitHub through `Services/GitHubApiClient.cs`, both with argument lists /
+  bounded requests and no shell interpolation.
 - `1.8` is out of servicing (2026-09-24); `2.6.4` is the current stable line.
 
 ## Install and update
@@ -112,7 +155,7 @@ Releases are published to `https://github.com/Fettah010/DevDesk/releases` (the
 ```powershell
 # Publish -> pack -> upload, all of it from the tag (channel comes from the suffix)
 dotnet tool restore                                # pinned vpk, no global install
-.\Scripts\build-and-release.ps1 -Tag v0.1.0-beta -Publish
+.\Scripts\build-and-release.ps1 -Tag v0.7.0-beta -Publish
 ```
 
 - **The installer is unsigned.** Windows SmartScreen will show *"Windows
@@ -162,17 +205,22 @@ half-remembered flags):
 MainWindow.xaml(.cs)   # Shell: custom title bar + NavigationView + theme toggle
 App.xaml               # Sea-blue theme dictionaries (light/dark) + shared card style
 Models/ProjectModel.cs # Project / workspace card model + CommitInfo + ComponentInfo
-Services/              # ScanEngine, ProjectCatalog, AppServices, PathHygiene,
-                       # GitRunner, ProjectOpenActions, WindowPlacement, Routes,
-                       # SingleInstance, SettingsService, LoggingService, UpdateService
-Pages/                 # Dashboard, Projects, Templates, GitHub, DevDesk (self), Settings, Diagnostics
-ViewModels/            # Dashboard / self / diagnostics state (x:Bind, no code-behind logic)
+Services/              # ScanEngine, ProjectCatalog, ProjectRootWatcher, ScanCacheStore,
+                       # IgnoreRuleMatcher, PathHygiene, ProjectOrganizationStore,
+                       # ProjectListQuery, WorkspaceTargetDiscovery, GitRunner, GitService,
+                       # ProjectOpenActions, WindowPlacement, Routes, SingleInstance,
+                       # SettingsService, LoggingService, UpdateService, GitHub*, Release*,
+                       # BuildService/ActivityCenter/BuildHistory, PerfCounters/StartupTimeline
+Pages/                 # Dashboard, Projects, Templates, GitHub, DevDesk (self), Activity, Settings, Diagnostics
+ViewModels/            # Dashboard / self / diagnostics / activity state (x:Bind, no code-behind logic)
 Scripts/launch-dev.ps1        # Build-if-needed + launch without a terminal (shortcut target)
 Scripts/make-shortcut.ps1     # Creates the desktop "DevDesk" shortcut
 Scripts/build-and-release.ps1 # Velopack release pipeline (the single source of truth)
 Scripts/ci.ps1                # The CI gate locally: Release build + full test suite (x64)
-Scripts/smoke-ui.ps1          # Visits all 7 pages through UI Automation in an isolated data dir
+Scripts/smoke-ui.ps1          # Visits all 8 destinations through UI Automation in an isolated data dir
 Scripts/verify-shell.ps1      # Proves placement, route restore, min size, single instance
+Scripts/capture-page.ps1      # Screenshots one destination for review/evidence
+Scripts/benchmark-v07.ps1     # Opt-in v0.7 cache/search/scale measurements
 DevDesk.Tests/                # xunit tests — live INSIDE this repo (own project)
 docs/DEVDESK-ROADMAP.md       # the map: versions, findings, decisions
 docs/versions/                # per-version work orders + evidence log
