@@ -9,27 +9,27 @@ build/run/commit/tag/push and "new app from template" scaffolding. DevDesk and
 the DevTem-WinUI 3 template live together in
 **`C:\Code\projects\DevEcosystem`**; other folders there are unrelated.
 
-> **Status: v0.7.0 in progress — Scale & multi-root (unreleased).** The last
-> published release is `v0.6.0-beta`; v0.7.0 is implemented on `main` but is
-> still blocked on performance gates (see below and
-> `docs/versions/V0.7.0.md`). Everything on screen is either real or clearly
-> labelled with the version that will make it real — there are no fake rows, no
-> buttons that look live but only apologise, and no invented data. DevDesk
-> scans any number of configured roots (branch, dirty state, last commits,
-> version, remote, worktrees) with no network, paints cached cards on the next
-> launch, keeps them current through a debounced filesystem watcher, searches /
-> sorts / pins / tags projects, shows a repository's solutions and projects,
-> reads GitHub releases, workflow runs and pull requests, prepares and pushes a
-> release, opens repos in Explorer / Visual Studio, builds / runs / publishes /
-> tests any project with a live console, and writes a redacted diagnostics
-> bundle. The map is **`docs/DEVDESK-ROADMAP.md`**; each version's work order
-> lives in **`docs/versions/`**.
+> **Status: v0.7.0 "Scale & multi-root" released as `v0.7.0-beta` on the beta
+> channel.** The last published release before this was `v0.6.0-beta`.
+> Everything on screen is either real or clearly labelled with the version that
+> will make it real — there are no fake rows, no buttons that look live but
+> only apologise, and no invented data. DevDesk scans any number of configured
+> roots (branch, dirty state, last commits, version, remote, worktrees) with no
+> network, paints cached cards on the next launch, keeps them current through a
+> debounced filesystem watcher, searches / sorts / pins / tags projects, shows
+> a repository's solutions and projects, reads GitHub releases, workflow runs
+> and pull requests, prepares and pushes a release, opens repos in Explorer /
+> Visual Studio, builds / runs / publishes / tests any project with a live
+> console, and writes a redacted diagnostics bundle. The map is
+> **`docs/DEVDESK-ROADMAP.md`**; each version's work order lives in
+> **`docs/versions/`**.
 >
-> Measured and recorded, still missed: startup to interactive cached cards
-> (M1, 690 ms vs < 700 ms app-side / 875 ms observed through UI Automation),
-> window visible (M2, 479–513 ms vs < 400 ms), and UI-thread blocking (M6,
-> 67–86 ms vs < 50 ms; XAML page construction is the remaining cost). Passing:
-> 8-repo scan 872 ms (M3), 50-repo scan 1.86 s (M4), working set 253 MiB (M5).
+> Measured and recorded (see `docs/versions/V0.7.0.md` §7): M1 app-side card
+> layout 690 ms (< 700 ms), M2 native HWND visibility 479–513 ms (< 400 ms),
+> M6 UI-thread delay 67–86 ms vs < 50 ms (XAML page construction remaining
+> cost). Passing: M3 8-repo scan 872 ms (< 1.5 s), M4 50-repo scan 1.86 s
+> (< 3 s), M5 working set 253 MiB (< 300 MB). M1–M6 are reported, not lowered;
+> v0.7.0 ships as beta.
 
 ## Run it — no terminal (double-click)
 

@@ -9,11 +9,20 @@ allowed; the tag suffix (`-beta`, `-dev`) selects the release channel.
 
 ## [Unreleased]
 
+## [0.7.0-beta] — 2026-11-09
+
 ### Added
 
-- One version identity: `Version`, `AssemblyVersion`, `FileVersion` and
-  `InformationalVersion` move together via `Scripts/bump-version.ps1`.
-- `LICENSE` (MIT) and this changelog.
+- **Multi-root scanning**: configure multiple repository roots with per-root depth, enabled state, and ignore rules.
+- **Ignore rules**: root-relative glob matcher with ordered `!` negation, default exclusions, and exclusion preview.
+- **Worktree and submodule identity**: safe pointer parsing, distinct checkout paths with worktree badges, and cross-root deduplication.
+- **Persistent scan cache**: schema-v2 cache for instant warm start and cache-first painting with background revalidation.
+- **Root-scoped change watcher**: debounced filesystem invalidation, checkout-targeted refresh, and reconciliation fallback.
+- **Progressive scanning**: progressive immutable catalog snapshots, real pending project cards, and stable ordering.
+- **Search, filter, and sort**: instant in-memory search across project facts; sort options and persisted saved views.
+- **Project organization**: persisted favorites/pins, colored tags, recently opened tracking, and hide-archived preference.
+- **Workspace expansion**: on-demand solution, project, and component discovery with safe launch actions.
+- **Performance instrumentation**: M1–M6 tracking with operation-level UI delay attribution and diagnostics reporting.
 
 ## [0.3.0-beta] — unreleased
 

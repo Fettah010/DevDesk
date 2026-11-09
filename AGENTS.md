@@ -9,10 +9,9 @@ first before making changes.
 `C:\Code\projects` (branch, version, last commits, releases per channel,
 GitHub Actions, build/run) so the terminal is no longer needed.
 
-**Current status: v0.7.0 "Scale & multi-root" implemented on `main`, not yet
-released; `v0.6.0-beta` is the last published release.** v0.7.0 is blocked on
-performance gates only (M1/M2/M6; see the performance table in
-`docs\versions\V0.7.0.md`). The shell,
+**Current status: v0.7.0 "Scale & multi-root" released as `v0.7.0-beta`;
+`v0.6.0-beta` was the previous release.** See `docs\versions\V0.7.0.md` for the
+measured M1–M6 performance table and release evidence. The shell,
 sea-blue theme (light/dark), navigation, the **ScanEngine** (git state + versions
 for every repo under any number of configured roots, with worktree identity),
 real open-in-Explorer / open-in-VS actions, window placement + single instance,
@@ -199,9 +198,8 @@ dotnet test ..\DevDesk.Tests -p:Platform=x64       # or from somewhere else
 
 ## Versioning & releases
 
-Current version: **0.6.0-beta is the last published release; v0.7.0 is
-implemented on `main` but not released** (the version quartet still reads 0.6.0
-until the release is unblocked). Keep
+Current version: **v0.7.0 "Scale & multi-root" is released as `v0.7.0-beta`
+on the beta channel.** `v0.6.0-beta` was the previous release. Keep
 `<Version>`, `<AssemblyVersion>`, `<FileVersion>` and `<InformationalVersion>` in
 `DevDesk.csproj` in sync (four fields, always) — `Scripts/bump-version.ps1`
 rewrites them together and the test suite fails when they drift.
