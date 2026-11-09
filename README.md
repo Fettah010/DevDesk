@@ -9,8 +9,10 @@ build/run/commit/tag/push and "new app from template" scaffolding. DevDesk and
 the DevTem-WinUI 3 template live together in
 **`C:\Code\projects\DevEcosystem`**; other folders there are unrelated.
 
-> **Status: v0.7.0 "Scale & multi-root" released as `v0.7.0-beta` on the beta
-> channel.** The last published release before this was `v0.6.0-beta`.
+> **Status: v0.8.0 in progress — Command center (unreleased).** The last
+> published release is `v0.7.0-beta`; v0.8.0 expands DevDesk into an always-on
+> command center with a command palette, global keyboard map, activity center
+> notifications, and system tray integration (see `docs/versions/V0.8.0.md`).
 > Everything on screen is either real or clearly labelled with the version that
 > will make it real — there are no fake rows, no buttons that look live but
 > only apologise, and no invented data. DevDesk scans any number of configured

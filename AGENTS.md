@@ -9,9 +9,8 @@ first before making changes.
 `C:\Code\projects` (branch, version, last commits, releases per channel,
 GitHub Actions, build/run) so the terminal is no longer needed.
 
-**Current status: v0.7.0 "Scale & multi-root" released as `v0.7.0-beta`;
-`v0.6.0-beta` was the previous release.** See `docs\versions\V0.7.0.md` for the
-measured M1–M6 performance table and release evidence. The shell,
+**Current status: v0.8.0 "Command center" in planning; `v0.7.0-beta` is the last
+published release.** See `docs\versions\V0.8.0.md` for the work order. The shell,
 sea-blue theme (light/dark), navigation, the **ScanEngine** (git state + versions
 for every repo under any number of configured roots, with worktree identity),
 real open-in-Explorer / open-in-VS actions, window placement + single instance,
