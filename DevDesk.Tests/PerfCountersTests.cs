@@ -240,31 +240,62 @@ public class PerfCountersTests
     }
 
     [Fact]
-    public void PerfCounters_BeginUiOperation_RecordsActiveOperationDuringDelay()
+    public void PerfCounters_UiOperation_AttributesTheLongestCompletedOperation()
     {
-        var counters = new PerfCounters();
+        var clock = new ManualTimeProvider();
+        var counters = new PerfCounters(clock);
 
-        using (counters.BeginUiOperation("dashboard catalog update"))
+        using (counters.BeginUiOperation("quick ui update"))
         {
-            counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(65));
+            clock.Advance(TimeSpan.FromMilliseconds(5));
         }
 
+        using (counters.BeginUiOperation("dashboard card layout"))
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(70));
+        }
+
+        var operation = counters.TakeLongestUiOperationSinceLastSample();
+
+        Assert.NotNull(operation);
+        Assert.Equal("dashboard card layout", operation!.Value.Name);
+        Assert.Equal(TimeSpan.FromMilliseconds(70), operation.Value.Elapsed);
+
+        // A delay observed on the next heartbeat is attributed to that work, not
+        // to whatever scope happens to be open when the tick finally runs.
+        counters.RecordUiDispatchDelay(
+            TimeSpan.FromMilliseconds(65),
+            operation.Value.Name,
+            operation.Value.Elapsed);
+
         Assert.Equal(TimeSpan.FromMilliseconds(65), counters.MaxUiDispatchDelay);
-        Assert.Equal("dashboard catalog update", counters.MaxUiDispatchDelayDuring);
+        Assert.Equal("dashboard card layout", counters.MaxUiDispatchDelayDuring);
+        Assert.Equal(TimeSpan.FromMilliseconds(70), counters.MaxUiDispatchDelayOperationElapsed);
+
+        // Taking the record resets it, so the next delay cannot borrow this name.
+        Assert.Null(counters.TakeLongestUiOperationSinceLastSample());
     }
 
     [Fact]
-    public void PerfCounters_BeginUiOperation_NestedReportsInnermost()
+    public void PerfCounters_UiOperation_NestedPrefersInnermostScope()
     {
-        var counters = new PerfCounters();
+        var clock = new ManualTimeProvider();
+        var counters = new PerfCounters(clock);
 
-        using (counters.BeginUiOperation("outer"))
-        using (counters.BeginUiOperation("inner"))
+        using (counters.BeginUiOperation("dashboard page load"))
         {
-            counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(120));
+            clock.Advance(TimeSpan.FromMilliseconds(10));
+            using (counters.BeginUiOperation("dashboard xaml initialize"))
+            {
+                clock.Advance(TimeSpan.FromMilliseconds(60));
+            }
         }
 
-        Assert.Equal("inner", counters.MaxUiDispatchDelayDuring);
+        var operation = counters.TakeLongestUiOperationSinceLastSample();
+
+        Assert.NotNull(operation);
+        Assert.Equal("dashboard xaml initialize", operation!.Value.Name);
+        Assert.Equal(TimeSpan.FromMilliseconds(60), operation.Value.Elapsed);
     }
 
     [Fact]
@@ -275,6 +306,7 @@ public class PerfCountersTests
 
         Assert.Equal(TimeSpan.FromMilliseconds(10), counters.MaxUiDispatchDelay);
         Assert.Null(counters.MaxUiDispatchDelayDuring);
+        Assert.Null(counters.MaxUiDispatchDelayOperationElapsed);
     }
 
     [Fact]
@@ -287,10 +319,39 @@ public class PerfCountersTests
             counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(5));
         }
 
-        // Operation ended; subsequent delays report no active operation.
+        // Operation ended; the live stack must not leak it into later samples.
         counters.RecordUiDispatchDelay(TimeSpan.FromMilliseconds(50));
         Assert.Null(counters.MaxUiDispatchDelayDuring);
         Assert.Equal(TimeSpan.FromMilliseconds(50), counters.MaxUiDispatchDelay);
+    }
+
+    [Fact]
+    public void Diagnostics_PerformanceViewModel_NamesTheAttributedUiOperation()
+    {
+        var clock = new ManualTimeProvider();
+        var counters = new PerfCounters(clock);
+        var viewModel = new DiagnosticsViewModel(
+            new LogRingBufferSink(),
+            counters,
+            new StartupTimeline(clock));
+
+        using (counters.BeginUiOperation("dashboard xaml initialize"))
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(70));
+        }
+
+        var operation = counters.TakeLongestUiOperationSinceLastSample();
+        Assert.NotNull(operation);
+        counters.RecordUiDispatchDelay(
+            TimeSpan.FromMilliseconds(80),
+            operation!.Value.Name,
+            operation.Value.Elapsed);
+
+        viewModel.Load();
+
+        var row = Row(viewModel, "Max UI dispatch delay");
+        Assert.Equal("80 ms · during dashboard xaml initialize (70 ms)", row.ValueText);
+        Assert.Equal(PerfTone.Over, row.Tone);
     }
 
     /// <summary>A clock whose timestamp only moves when the test says so.</summary>

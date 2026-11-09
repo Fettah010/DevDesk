@@ -31,9 +31,13 @@ public sealed class UiThreadHeartbeat
         var elapsed = _time.GetElapsedTime(_previousTimestamp, timestamp);
         _previousTimestamp = timestamp;
         var delay = elapsed - Interval;
+        var longestOperation = _counters.TakeLongestUiOperationSinceLastSample();
         if (delay > TimeSpan.Zero)
         {
-            _counters.RecordUiDispatchDelay(delay);
+            _counters.RecordUiDispatchDelay(
+                delay,
+                longestOperation?.Name,
+                longestOperation?.Elapsed);
         }
     }
 }

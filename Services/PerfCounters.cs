@@ -68,6 +68,13 @@ public sealed class PerfCounters
     /// <summary>Sentinel for "this operation has not completed in this session".</summary>
     private const long NotMeasured = -1;
 
+    /// <summary>
+    /// UI operations at or above this are logged individually. Well below the
+    /// 50 ms M6 budget on purpose: two 30 ms operations in one dispatcher window
+    /// are what turns into a violation, and neither would be visible otherwise.
+    /// </summary>
+    private static readonly TimeSpan SlowUiOperationThreshold = TimeSpan.FromMilliseconds(15);
+
     private long _scans;
     private long _updateChecks;
     private long _settingsWrites;
@@ -81,9 +88,23 @@ public sealed class PerfCounters
     private long _lastBuildMs = NotMeasured;
     private long _maxUiDispatchDelayTicks;
 
+    private readonly TimeProvider _time;
+
     /// <summary>Named UI-thread operations currently on the dispatcher call stack.</summary>
     /// <remarks>Only the UI thread pushes/pops this, so no lock is needed.</remarks>
-    private readonly Stack<string> _uiOperations = new();
+    private readonly Stack<(string Name, long StartedAt)> _uiOperations = new();
+
+    /// <summary>
+    /// The longest UI operation that finished since the heartbeat last sampled.
+    /// A dispatcher delay is observed on the <em>next</em> tick, by which time the
+    /// blocking operation has already returned, so the live stack would name the
+    /// heartbeat itself. Recording completed work is what makes the name real.
+    /// </summary>
+    private TimeSpan _longestOperationSinceSample = TimeSpan.Zero;
+    private string? _longestOperationSinceSampleName;
+    private int _longestOperationSinceSampleDepth;
+
+    public PerfCounters(TimeProvider? time = null) => _time = time ?? TimeProvider.System;
 
     /// <summary>Scans started, including the ones that failed or were cancelled.</summary>
     public long Scans => Interlocked.Read(ref _scans);
@@ -135,6 +156,13 @@ public sealed class PerfCounters
     /// </summary>
     public string? MaxUiDispatchDelayDuring { get; private set; }
 
+    /// <summary>
+    /// How long that attributed operation held the UI thread, when the heartbeat
+    /// was able to see a completed operation. Null when nothing ran between the
+    /// two ticks that produced the delay.
+    /// </summary>
+    public TimeSpan? MaxUiDispatchDelayOperationElapsed { get; private set; }
+
     /// <summary>Resident memory of this process (M5's 300 MB is the 100-repo target).</summary>
     public long WorkingSetBytes => Environment.WorkingSet;
 
@@ -178,7 +206,17 @@ public sealed class PerfCounters
     public void RecordFailure() => Interlocked.Increment(ref _failures);
 
     /// <summary>Retains the maximum delay observed by the UI dispatcher heartbeat.</summary>
-    public void RecordUiDispatchDelay(TimeSpan delay)
+    /// <param name="delay">How far past the heartbeat cadence this sample arrived.</param>
+    /// <param name="duringOperation">
+    /// The operation the caller attributes the delay to. The heartbeat passes the
+    /// longest operation that completed since the previous sample; when omitted
+    /// the currently active operation is used.
+    /// </param>
+    /// <param name="operationElapsed">How long that operation held the UI thread, if known.</param>
+    public void RecordUiDispatchDelay(
+        TimeSpan delay,
+        string? duringOperation = null,
+        TimeSpan? operationElapsed = null)
     {
         var ticks = Math.Max(0, delay.Ticks);
         var current = Interlocked.Read(ref _maxUiDispatchDelayTicks);
@@ -188,16 +226,34 @@ public sealed class PerfCounters
             if (observed == current)
             {
                 // Won the CAS: record which UI-thread operation was active.
-                MaxUiDispatchDelayDuring = _uiOperations.Count > 0 ? _uiOperations.Peek() : null;
+                MaxUiDispatchDelayDuring = duringOperation
+                    ?? (_uiOperations.Count > 0 ? _uiOperations.Peek().Name : null);
+                MaxUiDispatchDelayOperationElapsed = operationElapsed;
                 LoggingService.Log.Warning(
-                    "Startup: UI dispatch delay {Delay} ms during {Operation}",
+                    "Startup: UI dispatch delay {Delay} ms during {Operation} ({OperationMs} ms on the UI thread)",
                     (long)delay.TotalMilliseconds,
-                    MaxUiDispatchDelayDuring ?? "<idle>");
+                    MaxUiDispatchDelayDuring ?? "<idle>",
+                    operationElapsed is { } elapsed ? (long)elapsed.TotalMilliseconds : -1);
                 return;
             }
 
             current = observed;
         }
+    }
+
+    /// <summary>
+    /// Hands the heartbeat the longest UI operation completed since the previous
+    /// sample and resets the record, so each delay is attributed to the work that
+    /// occupied that specific window rather than to unrelated earlier work.
+    /// </summary>
+    public (string Name, TimeSpan Elapsed)? TakeLongestUiOperationSinceLastSample()
+    {
+        var name = _longestOperationSinceSampleName;
+        var elapsed = _longestOperationSinceSample;
+        _longestOperationSinceSample = TimeSpan.Zero;
+        _longestOperationSinceSampleName = null;
+        _longestOperationSinceSampleDepth = 0;
+        return name is null ? null : (name, elapsed);
     }
 
     /// <summary>
@@ -207,15 +263,42 @@ public sealed class PerfCounters
     /// </summary>
     public IDisposable BeginUiOperation(string name)
     {
-        _uiOperations.Push(name);
+        _uiOperations.Push((name, _time.GetTimestamp()));
         return new UiOperationDisposable(this);
     }
 
     private void EndUiOperation()
     {
-        if (_uiOperations.Count > 0)
+        if (_uiOperations.Count == 0)
         {
-            _uiOperations.Pop();
+            return;
+        }
+
+        // Depth is taken before the pop, so the innermost scope has the largest
+        // depth and wins a tie: naming "dashboard xaml initialize" is more useful
+        // than naming the page-load scope that contains it.
+        var depth = _uiOperations.Count;
+        var (name, startedAt) = _uiOperations.Pop();
+        var elapsed = _time.GetElapsedTime(startedAt, _time.GetTimestamp());
+        if (elapsed <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        if (elapsed >= SlowUiOperationThreshold)
+        {
+            LoggingService.Log.Debug(
+                "UI operation {Operation} took {Elapsed} ms",
+                name,
+                (long)elapsed.TotalMilliseconds);
+        }
+
+        if (depth > _longestOperationSinceSampleDepth
+            || (depth == _longestOperationSinceSampleDepth && elapsed > _longestOperationSinceSample))
+        {
+            _longestOperationSinceSample = elapsed;
+            _longestOperationSinceSampleName = name;
+            _longestOperationSinceSampleDepth = depth;
         }
     }
 

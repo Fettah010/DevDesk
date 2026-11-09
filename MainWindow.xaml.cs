@@ -111,10 +111,10 @@ public sealed partial class MainWindow : Window
 
     private void UiHeartbeatTimer_Tick(DispatcherQueueTimer sender, object args)
     {
-        using (PerfCounters.Current.BeginUiOperation("ui responsiveness heartbeat"))
-        {
-            _uiHeartbeat.Sample();
-        }
+        // Deliberately not wrapped in BeginUiOperation: the sample runs when the
+        // thread is free, so its own scope would become the "active operation" of
+        // every delay and hide the work that actually blocked the dispatcher.
+        _uiHeartbeat.Sample();
     }
 
     private void ApplyMinimumSize()
@@ -254,8 +254,11 @@ public sealed partial class MainWindow : Window
     private void RestoreLastRoute()
     {
         var route = Routes.Normalize(SettingsService.Current.Settings.LastRoute);
-        ContentFrame.Navigate(PageFor(route), null, new SuppressNavigationTransitionInfo());
-        SelectNavigationItem(route);
+        using (PerfCounters.Current.BeginUiOperation($"navigate to {route}"))
+        {
+            ContentFrame.Navigate(PageFor(route), null, new SuppressNavigationTransitionInfo());
+            SelectNavigationItem(route);
+        }
     }
 
     private async void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -325,9 +328,23 @@ public sealed partial class MainWindow : Window
 
     private void Navigate(string tag)
     {
-        ContentFrame.Navigate(PageFor(tag), null, new EntranceNavigationTransitionInfo());
-        SettingsService.Current.LastRoute = tag;
-        SelectNavigationItem(tag);
+        using (PerfCounters.Current.BeginUiOperation($"navigate to {tag}"))
+        {
+            using (PerfCounters.Current.BeginUiOperation("navigate: frame"))
+            {
+                ContentFrame.Navigate(PageFor(tag), null, new EntranceNavigationTransitionInfo());
+            }
+
+            using (PerfCounters.Current.BeginUiOperation("navigate: remember route"))
+            {
+                SettingsService.Current.LastRoute = tag;
+            }
+
+            using (PerfCounters.Current.BeginUiOperation("navigate: selection"))
+            {
+                SelectNavigationItem(tag);
+            }
+        }
     }
 
     // -------------------------------------------------------------------------

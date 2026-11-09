@@ -283,7 +283,9 @@ public sealed partial class DiagnosticsViewModel : ViewModelBase
                 PerfBudgets.UiDispatchDelay,
                 "budget 50 ms · M6",
                 valueSuffix: _counters.MaxUiDispatchDelayDuring is { } during
-                    ? $"during {during}"
+                    ? _counters.MaxUiDispatchDelayOperationElapsed is { } elapsed
+                        ? $"during {during} ({elapsed.TotalMilliseconds:0} ms)"
+                        : $"during {during}"
                     : null),
             ByteRow(
                 "Working set",

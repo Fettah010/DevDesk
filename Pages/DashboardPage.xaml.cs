@@ -22,20 +22,29 @@ public sealed partial class DashboardPage : Page
 
     public DashboardPage()
     {
-        ViewModel = new DashboardViewModel(
-            AppServices.Catalog,
-            AppServices.Activity.History,
-            AppServices.Organization);
-        using (PerfCounters.Current.BeginUiOperation("dashboard xaml initialize"))
+        using (PerfCounters.Current.BeginUiOperation("dashboard page load"))
         {
-            this.InitializeComponent();
+            using (PerfCounters.Current.BeginUiOperation("dashboard view model create"))
+            {
+                ViewModel = new DashboardViewModel(
+                    AppServices.Catalog,
+                    AppServices.Activity.History,
+                    AppServices.Organization);
+            }
+
+            using (PerfCounters.Current.BeginUiOperation("dashboard xaml initialize"))
+            {
+                this.InitializeComponent();
+            }
+
+            _catalogUpdateTimer = DispatcherQueue.CreateTimer();
+            _catalogUpdateTimer.Interval = System.TimeSpan.FromMilliseconds(50);
+            _catalogUpdateTimer.IsRepeating = true;
+            _catalogUpdateTimer.Tick += CatalogUpdateTimer_Tick;
+            Loaded += DashboardPage_Loaded;
+            Unloaded += DashboardPage_Unloaded;
         }
-        _catalogUpdateTimer = DispatcherQueue.CreateTimer();
-        _catalogUpdateTimer.Interval = System.TimeSpan.FromMilliseconds(50);
-        _catalogUpdateTimer.IsRepeating = true;
-        _catalogUpdateTimer.Tick += CatalogUpdateTimer_Tick;
-        Loaded += DashboardPage_Loaded;
-        Unloaded += DashboardPage_Unloaded;
+
         _ = ViewModel.LoadCommand.ExecuteAsync(null);
     }
 

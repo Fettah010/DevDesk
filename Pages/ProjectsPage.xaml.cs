@@ -45,22 +45,38 @@ public sealed partial class ProjectsPage : Page
 
     public ProjectsPage()
     {
-        this.InitializeComponent();
-        _catalogUpdateTimer = DispatcherQueue.CreateTimer();
-        _catalogUpdateTimer.Interval = TimeSpan.FromMilliseconds(50);
-        _catalogUpdateTimer.IsRepeating = true;
-        _catalogUpdateTimer.Tick += CatalogUpdateTimer_Tick;
-        RefreshSavedViews();
-        HideArchivedCheckBox.IsChecked = AppServices.Organization.HideArchived;
-        _initializingProjectList = false;
-        var snapshot = AppServices.Catalog.Snapshot;
-        if (snapshot.Freshness == CatalogFreshness.Cached)
+        using (PerfCounters.Current.BeginUiOperation("projects page load"))
         {
-            ApplyProjectList(snapshot);
+            using (PerfCounters.Current.BeginUiOperation("projects xaml initialize"))
+            {
+                this.InitializeComponent();
+            }
+
+            _catalogUpdateTimer = DispatcherQueue.CreateTimer();
+            _catalogUpdateTimer.Interval = TimeSpan.FromMilliseconds(50);
+            _catalogUpdateTimer.IsRepeating = true;
+            _catalogUpdateTimer.Tick += CatalogUpdateTimer_Tick;
+
+            using (PerfCounters.Current.BeginUiOperation("projects saved views refresh"))
+            {
+                RefreshSavedViews();
+                HideArchivedCheckBox.IsChecked = AppServices.Organization.HideArchived;
+            }
+
+            _initializingProjectList = false;
+            var snapshot = AppServices.Catalog.Snapshot;
+            if (snapshot.Freshness == CatalogFreshness.Cached)
+            {
+                using (PerfCounters.Current.BeginUiOperation("projects cached list apply"))
+                {
+                    ApplyProjectList(snapshot);
+                }
+            }
+
+            Loaded += ProjectsPage_Loaded;
+            Unloaded += ProjectsPage_Unloaded;
         }
 
-        Loaded += ProjectsPage_Loaded;
-        Unloaded += ProjectsPage_Unloaded;
         _ = LoadProjectsAsync();
     }
 
