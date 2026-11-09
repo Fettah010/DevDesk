@@ -45,7 +45,14 @@ public sealed partial class DashboardPage : Page
             Unloaded += DashboardPage_Unloaded;
         }
 
-        _ = ViewModel.LoadCommand.ExecuteAsync(null);
+        // The first card load happens in the next dispatcher pass: a cached
+        // snapshot creates every card container, which measured tens of
+        // milliseconds and used to land on top of page construction in the same
+        // stretch of UI-thread work (M6).
+        if (!DispatcherQueue.TryEnqueue(() => _ = ViewModel.LoadCommand.ExecuteAsync(null)))
+        {
+            _ = ViewModel.LoadCommand.ExecuteAsync(null);
+        }
     }
 
     private void DashboardPage_Loaded(object sender, RoutedEventArgs e)

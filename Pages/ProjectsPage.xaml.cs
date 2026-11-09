@@ -64,17 +64,29 @@ public sealed partial class ProjectsPage : Page
             }
 
             _initializingProjectList = false;
-            var snapshot = AppServices.Catalog.Snapshot;
-            if (snapshot.Freshness == CatalogFreshness.Cached)
-            {
-                using (PerfCounters.Current.BeginUiOperation("projects cached list apply"))
-                {
-                    ApplyProjectList(snapshot);
-                }
-            }
-
             Loaded += ProjectsPage_Loaded;
             Unloaded += ProjectsPage_Unloaded;
+        }
+
+        // Card container creation is the expensive half of the first frame (a
+        // cached snapshot of six projects costs tens of milliseconds on its own).
+        // Running it in the next dispatcher pass keeps page construction a single
+        // short stretch of UI-thread work instead of stacking the two (M6).
+        if (!DispatcherQueue.TryEnqueue(LoadProjectList))
+        {
+            LoadProjectList();
+        }
+    }
+
+    private void LoadProjectList()
+    {
+        var snapshot = AppServices.Catalog.Snapshot;
+        if (snapshot.Freshness == CatalogFreshness.Cached)
+        {
+            using (PerfCounters.Current.BeginUiOperation("projects cached list apply"))
+            {
+                ApplyProjectList(snapshot);
+            }
         }
 
         _ = LoadProjectsAsync();
